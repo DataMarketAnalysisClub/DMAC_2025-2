@@ -1,6 +1,6 @@
 <div style="display: flex; justify-content: space-between;">
     <img src="https://www.udd.cl/dircom/web/udd/Sello-35-color.png" alt="Logo UDD" width="184" height="269">
-    <img src="imagenes/DMAClogo.png" alt="Logo DMAC" width="190" height="269" style="margin-left: auto;">
+    <img src="imagenes/DMAClogo.png" alt="Logo DMAC" width="190" height="269" style="margin-right: auto;">
 </div>
 
 <div style="text-align: center;">
