@@ -1,7 +1,13 @@
-<div style="display: flex; justify-content: space-between; align-items: center;">
-    <img src="https://www.udd.cl/dircom/web/udd/Sello-35-color.png" alt="Logo UDD" width="184" height="269">
-    <img src="imagenes/DMAClogo.png" alt="Otra imagen" width="190" height="269" style="margin-left: auto;">
-</div>
+<table style="width: 100%;">
+    <tr>
+        <td style="text-align: left;">
+            <img src="https://www.udd.cl/dircom/web/udd/Sello-35-color.png" alt="Logo UDD" width="184" height="269">
+        </td>
+        <td style="text-align: right;">
+            <img src="imagenes/DMAClogo.png" alt="Logo DMAC" width="190" height="269">
+        </td>
+    </tr>
+</table>
 
 <div style="text-align: center;">
     <h1>Bienvenidos al repositorio del "Data Market Analysis Club" de la universidad Del Desarrollo - DMAC UDD</h1>
