@@ -22,10 +22,10 @@ Fomentar la excelencia en finanzas de mercado y análisis cuantitativo dentro de
 Posicionarnos como referente nacional en educación financiera basada en datos, reconocidos por la rigurosidad de nuestros análisis, la innovación de nuestras metodologías y el impacto de nuestras alianzas.
 
 ### Valores:  
-> Probidad: Integridad y ética irreprochable en cada análisis, colaboración y de los integrantes.
-> Excelencia: Búsqueda constante de calidad académica y técnica. 
-> Profesionalismo: Compromiso con mejores prácticas y estándares del sector. 
-> Transparencia: Comunicación clara y apertura en métodos, resultados y gobernanza.
+* __Probidad__: Integridad y ética irreprochable en cada análisis, colaboración y de los integrantes.
+* __Excelencia__: Búsqueda constante de calidad académica y técnica. 
+* __Profesionalismo__: Compromiso con mejores prácticas y estándares del sector. 
+* __Transparencia__: Comunicación clara y apertura en métodos, resultados y gobernanza.
 ----------
 
 <div style="text-align: center;">
