@@ -1,0 +1,7 @@
+^IPSA
+^GSPC
+NVDA
+LTM
+BCH
+AAPL
+GC=F
