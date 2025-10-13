@@ -2,6 +2,7 @@
 import sys
 import os
 import pandas as pd
+import datetime
 
 # Instalar yfinance si no está disponible
 try:
@@ -37,6 +38,7 @@ class StockApp(QWidget):
         self.setGeometry(100, 100, 900, 600)
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
+        self.df_actual = None
 
         # Inputs
         input_layout = QHBoxLayout()
@@ -63,6 +65,9 @@ class StockApp(QWidget):
         self.btn.clicked.connect(self.ejecutar)
         input_layout.addWidget(self.btn)
 
+        self.btn_download = QPushButton('Descargar CSV')
+        self.btn_download.clicked.connect(self.descargar_csv)
+        input_layout.addWidget(self.btn_download)
         # Web view para mostrar el gráfico
         self.webview = QWebEngineView()
         self.layout.addWidget(self.webview)
@@ -82,8 +87,9 @@ class StockApp(QWidget):
             if df.empty:
                 self.webview.setHtml(f"<h2>No se obtuvieron datos para el ticker '{ticker}'.</h2>")
                 return
-            df = df[['Open', 'High', 'Low', 'Close']].dropna().reset_index()
+            df = df[['Open', 'High', 'Low', 'Close']].dropna()
             df = df.xs(ticker, axis=1, level=1).dropna()
+            self.df_actual = df
             fig = go.Figure(data=[
                 go.Candlestick(
                     x=df.index,
@@ -103,6 +109,19 @@ class StockApp(QWidget):
             self.webview.setHtml(html_str)
         except Exception as e:
             self.webview.setHtml(f"<h2>Error: {e}</h2>")
+
+    def descargar_csv(self):
+        if self.df_actual is None or self.df_actual.empty:
+            self.webview.setHtml("<h2>No hay datos para descargar. Primero ejecute una consulta válida.</h2>")
+            return
+        ticker = self.ticker_input.text().strip()
+        filename = f"{ticker}_data_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
+        try:
+            self.df_actual.to_csv(os.path.join(downloads_path, filename), index=True)
+            self.webview.setHtml(f"<h2>Datos guardados en '{os.path.abspath(os.path.join(downloads_path, filename))}'</h2>")
+        except Exception as e:
+            self.webview.setHtml(f"<h2>Error al guardar CSV: {e}</h2>")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
