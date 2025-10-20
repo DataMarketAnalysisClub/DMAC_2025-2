@@ -12,8 +12,11 @@ class StockApp {
         this.useYahooFinance = true;
         
         // Configuración para visualización de múltiples tickers
+        // Por defecto, usar Base 100 a menos que se especifique lo contrario
+        const savedPreference = localStorage.getItem('stockapp_use_base100');
         this.useBase100 = config.useBase100 !== undefined ? config.useBase100 : 
-                         localStorage.getItem('stockapp_use_base100') !== 'false';
+                         savedPreference === null ? true : savedPreference !== 'false';
+        console.log(`Inicializando con Base 100: ${this.useBase100}`);
 
         // Esquemas de colores predeterminados para las velas
         this.colorSchemes = {
@@ -309,11 +312,12 @@ class StockApp {
                 colorSchemeSelect.value = this.currentColorScheme;
             }
             
-            // Establecer el selector de escala al valor actual
-            const scaleTypeSelect = document.getElementById('scale-type');
-            if (scaleTypeSelect) {
-                scaleTypeSelect.value = this.useBase100 ? 'base100' : 'absolute';
-            }
+            // Establecer el selector de escala al valor actual y agregar listener
+        const scaleTypeSelect = document.getElementById('scale-type');
+        if (scaleTypeSelect) {
+            scaleTypeSelect.value = this.useBase100 ? 'base100' : 'absolute';
+            console.log(`Estableciendo selector de escala a: ${scaleTypeSelect.value}`);
+        }
         }, 100);
         
         // Cargar Plotly.js dinámicamente
@@ -412,13 +416,20 @@ class StockApp {
         // Mostrar u ocultar la opción de escala según la cantidad de tickers
         const scaleOptionContainer = document.getElementById('scale-option-container');
         const scaleInfoPanel = document.getElementById('scale-info-panel');
+        const scaleTypeSelect = document.getElementById('scale-type');
         
+        // Mostrar u ocultar elementos relacionados con la escala
         if (scaleOptionContainer) {
             scaleOptionContainer.style.display = tickers.length > 1 ? 'flex' : 'none';
         }
         
         if (scaleInfoPanel) {
             scaleInfoPanel.style.display = tickers.length > 1 ? 'block' : 'none';
+        }
+        
+        // Asegurarse de que el selector refleje el estado actual
+        if (scaleTypeSelect && tickers.length > 1) {
+            scaleTypeSelect.value = this.useBase100 ? 'base100' : 'absolute';
         }
         
         this.setMessage(`Cargando datos para ${tickers.length} ticker(s) desde Yahoo Finance...`, false);
@@ -665,7 +676,10 @@ class StockApp {
         
         // Variables para normalización base 100
         let firstDateValues = {};
-        let useBase100 = tickers.length > 1;
+        
+        // Usar la propiedad de la clase en lugar de crear una variable local
+        // Pero solo activar Base 100 si hay múltiples tickers y el usuario la ha seleccionado
+        const useBase100 = tickers.length > 1 && this.useBase100;
         
         // Si vamos a usar base 100, obtener valores de referencia del primer día
         if (useBase100) {
@@ -688,8 +702,10 @@ class StockApp {
             const dates = data.map(item => item.date);
             let opens, highs, lows, closes;
             
+            // Aplicar normalización Base 100 solo si está activada y hay un valor base
             if (useBase100 && firstDateValues[ticker]) {
                 const baseValue = firstDateValues[ticker];
+                console.log(`Aplicando Base 100 para ${ticker} con valor base: ${baseValue}`);
                 // Normalizar a base 100
                 opens = data.map(item => (item.open / baseValue) * 100);
                 highs = data.map(item => (item.high / baseValue) * 100);
@@ -697,6 +713,7 @@ class StockApp {
                 closes = data.map(item => (item.close / baseValue) * 100);
             } else {
                 // Usar valores absolutos
+                console.log(`Usando valores absolutos para ${ticker}`);
                 opens = data.map(item => item.open);
                 highs = data.map(item => item.high);
                 lows = data.map(item => item.low);
@@ -728,12 +745,14 @@ class StockApp {
             traces.push(trace);
         });
         
-        // Título dinámico según la cantidad de tickers
+        // Título dinámico según la cantidad de tickers y tipo de escala
         let title = '';
         if (tickers.length === 1) {
             title = `Gráfico de velas japonesas para ${tickers[0]}`;
         } else {
-            title = `Gráfico comparativo (Base 100): ${tickers.join(', ')}`;
+            // Incluir el tipo de escala en el título si hay múltiples tickers
+            const scaleType = useBase100 ? '(Base 100)' : '(Valores absolutos)';
+            title = `Gráfico comparativo ${scaleType}: ${tickers.join(', ')}`;
         }
         
         const layout = {
@@ -746,9 +765,8 @@ class StockApp {
             },
             yaxis: {
                 title: useBase100 ? 'Precio (Base 100)' : 'Precio',
-                // Usar escala logarítmica si hay mucha dispersión de precios
-                // y hay más de un ticker
-                type: useBase100 ? 'linear' : 'linear'
+                // Mantener escala lineal en ambos casos para mejor visualización
+                type: 'linear'
             },
             autosize: true,
             // Establecer dimensiones fijas para evitar deformación
@@ -822,20 +840,20 @@ class StockApp {
      * @param {boolean} useBase100 - Indica si se debe usar escala base 100
      */
     changeScaleType(useBase100) {
-        // Solo aplicar si hay múltiples tickers y si cambia el valor
-        if (this.tickers.length > 1 && this.useBase100 !== useBase100) {
-            this.useBase100 = useBase100;
-            
-            // Actualizar el gráfico
-            if (Object.keys(this.currentData).length > 0) {
-                this.redrawChart();
-                const scaleType = useBase100 ? 'Base 100' : 'Valores absolutos';
-                this.setMessage(`Escala cambiada a ${scaleType}`, false);
-            }
-            
-            // Guardar preferencia en localStorage
-            localStorage.setItem('stockapp_use_base100', useBase100.toString());
+        console.log(`Cambiando a escala: ${useBase100 ? 'Base 100' : 'Valores absolutos'}`);
+        
+        // Actualizar el valor aunque sea el mismo para forzar el redibujado
+        this.useBase100 = useBase100;
+        
+        // Actualizar el gráfico si hay datos y más de un ticker
+        if (Object.keys(this.currentData).length > 0 && this.tickers.length > 1) {
+            this.redrawChart();
+            const scaleType = useBase100 ? 'Base 100' : 'Valores absolutos';
+            this.setMessage(`Escala cambiada a ${scaleType}`, false);
         }
+        
+        // Guardar preferencia en localStorage
+        localStorage.setItem('stockapp_use_base100', useBase100.toString());
     }
     
     // Ya no necesitamos métodos relacionados con API Key
