@@ -87,7 +87,7 @@ class StockApp(QWidget):
             if df.empty:
                 self.webview.setHtml(f"<h2>No se obtuvieron datos para el ticker '{ticker}'.</h2>")
                 return
-            df = df[['Open', 'High', 'Low', 'Close']].dropna().reset_index()
+            df = df[['Open', 'High', 'Low', 'Close']].dropna()
             df = df.xs(ticker, axis=1, level=1).dropna()
             self.df_actual = df
             fig = go.Figure(data=[
