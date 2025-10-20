@@ -68,9 +68,18 @@ class StockApp(QWidget):
         self.btn_download = QPushButton('Descargar CSV')
         self.btn_download.clicked.connect(self.descargar_csv)
         input_layout.addWidget(self.btn_download)
+
+        # Mensajes
+        self.message_label = QLabel('')
+        self.layout.addWidget(self.message_label)
+
         # Web view para mostrar el gráfico
         self.webview = QWebEngineView()
         self.layout.addWidget(self.webview)
+        self.webview.setHtml("<h2>Ingrese un ticker y presione 'Ejecutar'</h2>")
+
+    def set_message(self, msg):
+        self.message_label.setText(msg)
 
     def ejecutar(self):
         ticker = self.ticker_input.text().strip()
@@ -78,17 +87,20 @@ class StockApp(QWidget):
         frecuencia = self.freq_input.text().strip() or '1wk'
         valid_intervals = ['1d', '1wk', '1mo']
         if not ticker:
+            self.set_message("Debe ingresar un ticker.")
             return
         if frecuencia not in valid_intervals:
-            self.webview.setHtml(f"<h2>Frecuencia '{frecuencia}' no válida. Opciones: {valid_intervals}</h2>")
+            self.set_message(f"Frecuencia '{frecuencia}' no válida. Opciones: {valid_intervals}")
+            self.webview.setHtml("")
             return
         try:
             df = yf.download(ticker, period=periodo, interval=frecuencia, progress=False)
             if df.empty:
-                self.webview.setHtml(f"<h2>No se obtuvieron datos para el ticker '{ticker}'.</h2>")
+                self.set_message(f"No se obtuvieron datos para el ticker '{ticker}'.")
+                self.webview.setHtml("")
                 return
-            df = df[['Open', 'High', 'Low', 'Close']].dropna()
-            df = df.xs(ticker, axis=1, level=1).dropna()
+            df.columns = df.columns.droplevel(1)  # Elimina el nivel del ticker en las columnas
+            df = df[['Open', 'High', 'Low', 'Close']].dropna()  # Selecciona las columnas necesarias
             self.df_actual = df
             fig = go.Figure(data=[
                 go.Candlestick(
@@ -107,21 +119,23 @@ class StockApp(QWidget):
             )
             html_str = fig.to_html(include_plotlyjs='cdn')
             self.webview.setHtml(html_str)
+            self.set_message("Gráfico generado correctamente.")
         except Exception as e:
-            self.webview.setHtml(f"<h2>Error: {e}</h2>")
+            self.set_message(f"Error: {e}")
+            self.webview.setHtml("")
 
     def descargar_csv(self):
         if self.df_actual is None or self.df_actual.empty:
-            self.webview.setHtml("<h2>No hay datos para descargar. Primero ejecute una consulta válida.</h2>")
+            self.set_message("No hay datos para descargar. Primero ejecute una consulta válida.")
             return
         ticker = self.ticker_input.text().strip()
         filename = f"{ticker}_data_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
         try:
             self.df_actual.to_csv(os.path.join(downloads_path, filename), index=True)
-            self.webview.setHtml(f"<h2>Datos guardados en '{os.path.abspath(os.path.join(downloads_path, filename))}'</h2>")
+            self.set_message(f"Datos guardados en '{os.path.abspath(os.path.join(downloads_path, filename))}'")
         except Exception as e:
-            self.webview.setHtml(f"<h2>Error al guardar CSV: {e}</h2>")
+            self.set_message(f"Error al guardar CSV: {e}")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

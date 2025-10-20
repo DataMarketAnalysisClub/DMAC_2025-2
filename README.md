@@ -1,12 +1,11 @@
 <div style="display: flex; justify-content: space-between;">
     <img src="https://www.udd.cl/dircom/web/udd/Sello-35-color.png" alt="Logo UDD" width="184" height="269">
-    <img src="imagenes/DMAClogo.png" alt="Logo DMAC" width="270" style="text-align: right;">
+    <img src="./imagenes/DMAClogo.png" alt="Logo DMAC" width="250" style="text-align: right;">
 </div>
 
 <div style="text-align: center;">
-    <h1>Bienvenidos al repositorio del "Data Market Analysis Club" de la universidad Del Desarrollo - DMAC UDD</h1>
+    <h1>Bienvenidos al repositorio del "Data Market Analysis Club" de la Universidad del Desarrollo - DMAC UDD</h1>
 </div>
-
 ----------
 <div style="text-align: center;">
     <h2> ¿Qué es DMAC?</h2>
@@ -32,4 +31,4 @@ Posicionarnos como referente nacional en educación financiera basada en datos, 
     <h2> ¿Por qué un GitHub?</h2>
 </div>
 
-El objetivo de este repositorio es documentar cada uno de los talleres hechos respecto al análisis financiero tecnológico (FinTech), principalmente usando python, y librerías como __PyFinance__, __Pandas__, __MatplotLib__, __seaborn__, y librerías de análisis y ciencias de datos como __scikit-learn__, __tensorflow__ y/o __PyTorch__.
+El objetivo de este repositorio es documentar cada uno de los talleres hechos respecto al análisis financiero tecnológico (FinTech), principalmente usando python, con librerías como __yFinance__, __Pandas__, __MatPlotLib__, __Seaborn__, y librerías de análisis y ciencias de datos como __scikit-learn__, __TensorFlow__ y/o __PyTorch__.
