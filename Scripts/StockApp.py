@@ -2,6 +2,7 @@
 import sys
 import os
 import pandas as pd
+import datetime
 
 # Instalar yfinance si no está disponible
 try:
@@ -37,7 +38,7 @@ class StockApp(QWidget):
         self.setGeometry(100, 100, 900, 600)
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
-
+        self.df_actual = None
         # Inputs
         input_layout = QHBoxLayout()
         self.layout.addLayout(input_layout)
@@ -63,6 +64,10 @@ class StockApp(QWidget):
         self.btn.clicked.connect(self.ejecutar)
         input_layout.addWidget(self.btn)
 
+        self.btn2 = QPushButton('Descargar')
+        self.btn2.clicked.connect(self.descargar)
+        input_layout.addWidget(self.btn2)
+
         # Web view para mostrar el gráfico
         self.webview = QWebEngineView()
         self.layout.addWidget(self.webview)
@@ -84,6 +89,7 @@ class StockApp(QWidget):
                 return
             df = df[['Open', 'High', 'Low', 'Close']].dropna().reset_index()
             df = df.xs(ticker, axis=1, level=1).dropna()
+            self.df_actual = df
             fig = go.Figure(data=[
                 go.Candlestick(
                     x=df.index,
@@ -103,6 +109,17 @@ class StockApp(QWidget):
             self.webview.setHtml(html_str)
         except Exception as e:
             self.webview.setHtml(f"<h2>Error: {e}</h2>")
+    def descargar(self):
+        if self.df_actual is None:
+            self.webview.setHtml("<h2>No hay datos para descargar. Ejecute primero la consulta.</h2>")
+            return
+        try:
+            directory = os.path.expanduser('~/Downloads')
+            filename = f"{self.ticker_input.text().strip()}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_data.csv"
+            self.df_actual.to_csv(os.path.join(directory, filename), index=True)
+            self.webview.setHtml(f"<h2>Datos descargados exitosamente como '{filename}'.</h2>")
+        except Exception as e:
+            self.webview.setHtml(f"<h2>Error al descargar los datos: {e}</h2>")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
