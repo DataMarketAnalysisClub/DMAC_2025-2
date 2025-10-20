@@ -6,9 +6,14 @@
 // Clase principal para la aplicación de acciones
 class StockApp {
     constructor(config = {}) {
-        this.currentData = null;
+        this.currentData = {};  // Objeto para almacenar datos de múltiples tickers
+        this.tickers = [];      // Lista de tickers actualmente visualizados
         // Ya no necesitamos API key para Yahoo Finance
         this.useYahooFinance = true;
+        
+        // Configuración para visualización de múltiples tickers
+        this.useBase100 = config.useBase100 !== undefined ? config.useBase100 : 
+                         localStorage.getItem('stockapp_use_base100') !== 'false';
 
         // Esquemas de colores predeterminados para las velas
         this.colorSchemes = {
@@ -68,8 +73,9 @@ class StockApp {
                 <div id="main-screen" style="display:none;">
                     <div class="input-container">
                         <div class="input-group">
-                            <label for="ticker-input">Ticker:</label>
-                            <input type="text" id="ticker-input" placeholder="Ej: AAPL">
+                            <label for="ticker-input">Tickers:</label>
+                            <input type="text" id="ticker-input" placeholder="Ej: AAPL,MSFT,GOOGL">
+                            <span class="input-help">(Separados por comas)</span>
                         </div>
                         <div class="input-group">
                             <label for="freq-input">Frecuencia:</label>
@@ -99,11 +105,22 @@ class StockApp {
                                 <option value="pastel">Colores Pastel</option>
                             </select>
                         </div>
+                        <div class="input-group" id="scale-option-container" style="display:none;">
+                            <label for="scale-type">Escala:</label>
+                            <select id="scale-type">
+                                <option value="base100" selected>Base 100</option>
+                                <option value="absolute">Valores absolutos</option>
+                            </select>
+                        </div>
                         <button id="execute-button" class="action-button">Ejecutar</button>
                         <button id="download-button" class="action-button">Descargar CSV</button>
                     </div>
                     
                     <div id="message-container"></div>
+                    
+                    <div class="scale-info-panel" id="scale-info-panel" style="display:none;">
+                        <p><strong>Escala Base 100:</strong> Todos los tickers se normalizan tomando el primer día como valor 100, lo que facilita comparar el rendimiento porcentual relativo a lo largo del tiempo.</p>
+                    </div>
                     
                     <div id="chart-container">
                         <div id="stock-chart">
@@ -244,6 +261,27 @@ class StockApp {
                     color: #333;
                     font-size: 16px;
                 }
+
+                .input-help {
+                    font-size: 12px;
+                    color: #666;
+                    margin-left: 5px;
+                    font-style: italic;
+                }
+                
+                .scale-info-panel {
+                    background-color: #f2f9ff;
+                    border: 1px solid #d0e3ff;
+                    border-radius: 4px;
+                    padding: 10px 15px;
+                    margin: 10px 0;
+                    font-size: 14px;
+                }
+                
+                .scale-info-panel p {
+                    margin: 5px 0;
+                    color: #333;
+                }
             </style>
         `;
 
@@ -258,12 +296,23 @@ class StockApp {
         document.getElementById('color-scheme').addEventListener('change', (e) => {
             this.changeColorScheme(e.target.value);
         });
+        
+        // Agregar evento para cambiar el tipo de escala
+        document.getElementById('scale-type').addEventListener('change', (e) => {
+            this.changeScaleType(e.target.value === 'base100');
+        });
 
         // Establecer el selector de colores al valor actual
         setTimeout(() => {
             const colorSchemeSelect = document.getElementById('color-scheme');
             if (colorSchemeSelect && this.currentColorScheme) {
                 colorSchemeSelect.value = this.currentColorScheme;
+            }
+            
+            // Establecer el selector de escala al valor actual
+            const scaleTypeSelect = document.getElementById('scale-type');
+            if (scaleTypeSelect) {
+                scaleTypeSelect.value = this.useBase100 ? 'base100' : 'absolute';
             }
         }, 100);
         
@@ -348,29 +397,89 @@ class StockApp {
      * Ejecuta la búsqueda de datos de acciones y genera el gráfico
      */
     async execute() {
-        const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
+        const tickerInput = document.getElementById('ticker-input').value.trim().toUpperCase();
         const period = document.getElementById('period-input').value;
         const interval = document.getElementById('freq-input').value;
         
-        if (!ticker) {
-            this.setMessage('Debe ingresar un ticker.');
+        // Dividir la entrada por comas para obtener múltiples tickers
+        const tickers = tickerInput.split(',').map(t => t.trim()).filter(t => t.length > 0);
+        
+        if (tickers.length === 0) {
+            this.setMessage('Debe ingresar al menos un ticker.');
             return;
         }
         
-        this.setMessage('Cargando datos desde Yahoo Finance...', false);
+        // Mostrar u ocultar la opción de escala según la cantidad de tickers
+        const scaleOptionContainer = document.getElementById('scale-option-container');
+        const scaleInfoPanel = document.getElementById('scale-info-panel');
+        
+        if (scaleOptionContainer) {
+            scaleOptionContainer.style.display = tickers.length > 1 ? 'flex' : 'none';
+        }
+        
+        if (scaleInfoPanel) {
+            scaleInfoPanel.style.display = tickers.length > 1 ? 'block' : 'none';
+        }
+        
+        this.setMessage(`Cargando datos para ${tickers.length} ticker(s) desde Yahoo Finance...`, false);
         
         try {
-            // Obtener datos desde Yahoo Finance
-            const data = await this.fetchStockData(ticker, interval, period);
+            // Limpiar datos anteriores
+            this.currentData = {};
+            this.tickers = [];
             
-            if (!data || data.length === 0) {
-                this.setMessage(`No se obtuvieron datos para el ticker '${ticker}'.`);
+            // Para cada ticker, obtener los datos
+            const allDataPromises = tickers.map(ticker => 
+                this.fetchStockData(ticker, interval, period)
+                    .then(data => {
+                        if (!data || data.length === 0) {
+                            this.setMessage(`No se obtuvieron datos para el ticker '${ticker}'. Continuando con el resto...`);
+                            return null;
+                        }
+                        return { ticker, data };
+                    })
+                    .catch(error => {
+                        this.setMessage(`Error al obtener datos para '${ticker}': ${error.message}. Continuando con el resto...`);
+                        return null;
+                    })
+            );
+            
+            // Esperar a que todas las promesas se resuelvan
+            const results = await Promise.all(allDataPromises);
+            
+            // Filtrar resultados nulos y guardar los datos
+            const validResults = results.filter(result => result !== null);
+            
+            if (validResults.length === 0) {
+                this.setMessage('No se obtuvieron datos para ningún ticker.');
+                document.getElementById('stock-chart').innerHTML = '<h2>No se encontraron datos para los tickers ingresados</h2>';
                 return;
             }
             
-            this.currentData = data;
-            this.createCandlestickChart(ticker, data);
-            this.setMessage('Gráfico generado correctamente.', false);
+            // Verificar que todos los tickers tienen datos para las mismas fechas
+            const firstTickerDates = new Set(validResults[0].data.map(item => item.date));
+            const allSameDates = validResults.every(result => {
+                const tickerDates = new Set(result.data.map(item => item.date));
+                // Comprobar si tienen el mismo número de fechas
+                if (tickerDates.size !== firstTickerDates.size) return false;
+                
+                // Comprobar que todas las fechas coinciden
+                return [...tickerDates].every(date => firstTickerDates.has(date));
+            });
+            
+            if (!allSameDates) {
+                this.setMessage('Advertencia: Los tickers no tienen datos para las mismas fechas exactamente. Algunos puntos pueden no visualizarse correctamente.');
+            }
+            
+            // Guardar datos y tickers
+            validResults.forEach(result => {
+                this.currentData[result.ticker] = result.data;
+                this.tickers.push(result.ticker);
+            });
+            
+            // Crear gráfico con todos los tickers
+            this.createCandlestickChart(this.tickers, this.currentData);
+            this.setMessage(`Gráfico generado correctamente para ${this.tickers.length} ticker(s).`, false);
         } catch (error) {
             this.setMessage(`Error: ${error.message}`);
             document.getElementById('stock-chart').innerHTML = '<h2>Error al cargar los datos</h2>';
@@ -494,43 +603,141 @@ class StockApp {
     }
 
     /**
-     * Crea un gráfico de velas japonesas con Plotly
-     * @param {string} ticker - Símbolo del ticker
-     * @param {Array} data - Datos para el gráfico
+     * Crea un gráfico de velas japonesas con Plotly para uno o más tickers
+     * @param {Array} tickers - Lista de símbolos de tickers
+     * @param {Object} tickersData - Objeto con datos para cada ticker
      */
-    createCandlestickChart(ticker, data) {
+    createCandlestickChart(tickers, tickersData) {
         const chartContainer = document.getElementById('stock-chart');
         
         // Limpiar el contenedor para evitar problemas de acumulación
         chartContainer.innerHTML = '';
         
-        // Extraer datos para Plotly
-        const dates = data.map(item => item.date);
-        const opens = data.map(item => item.open);
-        const highs = data.map(item => item.high);
-        const lows = data.map(item => item.low);
-        const closes = data.map(item => item.close);
-        
         // Obtener el esquema de colores actual
         const colorScheme = this.colorSchemes[this.currentColorScheme] || this.colorSchemes.default;
         
-        // Crear el gráfico de velas con colores personalizados
-        const trace = {
-            x: dates,
-            open: opens,
-            high: highs,
-            low: lows,
-            close: closes,
-            type: 'candlestick',
-            name: ticker,
-            // Usar el esquema de colores seleccionado
-            increasing: colorScheme.increasing,
-            decreasing: colorScheme.decreasing,
-            line: {width: 1}
-        };
+        // Crear trazas para cada ticker
+        const traces = [];
+        
+        // Combos de colores para cada ticker (subida/bajada)
+        const tickerColorPairs = [
+            { // Azul / Gris
+                increasing: {line: {color: '#005293'}, fillcolor: 'rgba(0, 82, 147, 0.5)'}, 
+                decreasing: {line: {color: '#6E7b8b'}, fillcolor: 'rgba(110, 123, 139, 0.5)'}
+            },
+            { // Verde / Rojo
+                increasing: {line: {color: '#00A651'}, fillcolor: 'rgba(0, 166, 81, 0.5)'}, 
+                decreasing: {line: {color: '#E63946'}, fillcolor: 'rgba(230, 57, 70, 0.5)'}
+            },
+            { // Naranja / Morado
+                increasing: {line: {color: '#F26419'}, fillcolor: 'rgba(242, 100, 25, 0.5)'}, 
+                decreasing: {line: {color: '#662E9B'}, fillcolor: 'rgba(102, 46, 155, 0.5)'}
+            },
+            { // Turquesa / Marrón
+                increasing: {line: {color: '#1ABC9C'}, fillcolor: 'rgba(26, 188, 156, 0.5)'}, 
+                decreasing: {line: {color: '#8C4A2F'}, fillcolor: 'rgba(140, 74, 47, 0.5)'}
+            },
+            { // Amarillo / Índigo
+                increasing: {line: {color: '#F4D03F'}, fillcolor: 'rgba(244, 208, 63, 0.5)'}, 
+                decreasing: {line: {color: '#34495E'}, fillcolor: 'rgba(52, 73, 94, 0.5)'}
+            },
+            { // Rosa / Verde oliva
+                increasing: {line: {color: '#E91E63'}, fillcolor: 'rgba(233, 30, 99, 0.5)'}, 
+                decreasing: {line: {color: '#7D8E2E'}, fillcolor: 'rgba(125, 142, 46, 0.5)'}
+            },
+            { // Celeste / Burdeo
+                increasing: {line: {color: '#03A9F4'}, fillcolor: 'rgba(3, 169, 244, 0.5)'}, 
+                decreasing: {line: {color: '#7D1935'}, fillcolor: 'rgba(125, 25, 53, 0.5)'}
+            },
+            { // Verde lima / Azul marino
+                increasing: {line: {color: '#CDDC39'}, fillcolor: 'rgba(205, 220, 57, 0.5)'}, 
+                decreasing: {line: {color: '#1A237E'}, fillcolor: 'rgba(26, 35, 126, 0.5)'}
+            },
+            { // Coral / Verde azulado
+                increasing: {line: {color: '#FF7F50'}, fillcolor: 'rgba(255, 127, 80, 0.5)'}, 
+                decreasing: {line: {color: '#004D40'}, fillcolor: 'rgba(0, 77, 64, 0.5)'}
+            },
+            { // Lavanda / Ámbar
+                increasing: {line: {color: '#9F8FEF'}, fillcolor: 'rgba(159, 143, 239, 0.5)'}, 
+                decreasing: {line: {color: '#FF8F00'}, fillcolor: 'rgba(255, 143, 0, 0.5)'}
+            }
+        ];
+        
+        // Variables para normalización base 100
+        let firstDateValues = {};
+        let useBase100 = tickers.length > 1;
+        
+        // Si vamos a usar base 100, obtener valores de referencia del primer día
+        if (useBase100) {
+            tickers.forEach(ticker => {
+                const data = tickersData[ticker];
+                if (data && data.length > 0) {
+                    // Usar el primer precio de cierre como valor base
+                    firstDateValues[ticker] = data[0].close;
+                }
+            });
+        }
+        
+        tickers.forEach((ticker, index) => {
+            const data = tickersData[ticker];
+            
+            // Si no hay datos para este ticker, omitirlo
+            if (!data || data.length === 0) return;
+            
+            // Extraer datos para Plotly
+            const dates = data.map(item => item.date);
+            let opens, highs, lows, closes;
+            
+            if (useBase100 && firstDateValues[ticker]) {
+                const baseValue = firstDateValues[ticker];
+                // Normalizar a base 100
+                opens = data.map(item => (item.open / baseValue) * 100);
+                highs = data.map(item => (item.high / baseValue) * 100);
+                lows = data.map(item => (item.low / baseValue) * 100);
+                closes = data.map(item => (item.close / baseValue) * 100);
+            } else {
+                // Usar valores absolutos
+                opens = data.map(item => item.open);
+                highs = data.map(item => item.high);
+                lows = data.map(item => item.low);
+                closes = data.map(item => item.close);
+            }
+            
+            // Crear el gráfico de velas para este ticker
+            const trace = {
+                x: dates,
+                open: opens,
+                high: highs,
+                low: lows,
+                close: closes,
+                type: 'candlestick',
+                name: ticker,
+                // Usar el esquema de colores seleccionado para un solo ticker
+                // O usar pares de colores específicos para cada ticker cuando hay varios
+                increasing: tickers.length > 1 ? 
+                    tickerColorPairs[index % tickerColorPairs.length].increasing : 
+                    colorScheme.increasing,
+                decreasing: tickers.length > 1 ? 
+                    tickerColorPairs[index % tickerColorPairs.length].decreasing : 
+                    colorScheme.decreasing,
+                line: {width: 1},
+                // Hacer el gráfico visible inicialmente
+                visible: true
+            };
+            
+            traces.push(trace);
+        });
+        
+        // Título dinámico según la cantidad de tickers
+        let title = '';
+        if (tickers.length === 1) {
+            title = `Gráfico de velas japonesas para ${tickers[0]}`;
+        } else {
+            title = `Gráfico comparativo (Base 100): ${tickers.join(', ')}`;
+        }
         
         const layout = {
-            title: `Gráfico de velas japonesas para ${ticker}`,
+            title: title,
             xaxis: {
                 title: 'Fecha',
                 rangeslider: {
@@ -538,21 +745,31 @@ class StockApp {
                 }
             },
             yaxis: {
-                title: 'Precio'
+                title: useBase100 ? 'Precio (Base 100)' : 'Precio',
+                // Usar escala logarítmica si hay mucha dispersión de precios
+                // y hay más de un ticker
+                type: useBase100 ? 'linear' : 'linear'
             },
             autosize: true,
             // Establecer dimensiones fijas para evitar deformación
             width: chartContainer.clientWidth,
             height: 450,
             margin: {
-                l: 50,
+                l: 60,  // Un poco más ancho para etiquetas de base 100
                 r: 20,
                 t: 50,
                 b: 50
             },
             // Estilo del fondo y tema general
             paper_bgcolor: 'white',
-            plot_bgcolor: '#F8F9F9'
+            plot_bgcolor: '#F8F9F9',
+            // Añadir leyenda para múltiples tickers
+            showlegend: tickers.length > 1,
+            legend: {
+                x: 0,
+                y: 1,
+                orientation: 'h'
+            }
         };
         
         const config = {
@@ -562,7 +779,7 @@ class StockApp {
             displaylogo: false
         };
         
-        Plotly.newPlot(chartContainer, [trace], layout, config);
+        Plotly.newPlot(chartContainer, traces, layout, config);
         
         // Manejar redimensionado de ventana
         const resizeChart = () => {
@@ -590,7 +807,7 @@ class StockApp {
             this.currentColorScheme = schemeName;
             
             // Si hay datos, actualizar el gráfico con el nuevo esquema de colores
-            if (this.currentData && this.currentData.length > 0) {
+            if (Object.keys(this.currentData).length > 0 && this.tickers.length > 0) {
                 this.redrawChart();
                 this.setMessage(`Esquema de colores cambiado a ${schemeName}`, false);
             }
@@ -600,49 +817,141 @@ class StockApp {
         }
     }
     
+    /**
+     * Cambia el tipo de escala entre base 100 y valores absolutos
+     * @param {boolean} useBase100 - Indica si se debe usar escala base 100
+     */
+    changeScaleType(useBase100) {
+        // Solo aplicar si hay múltiples tickers y si cambia el valor
+        if (this.tickers.length > 1 && this.useBase100 !== useBase100) {
+            this.useBase100 = useBase100;
+            
+            // Actualizar el gráfico
+            if (Object.keys(this.currentData).length > 0) {
+                this.redrawChart();
+                const scaleType = useBase100 ? 'Base 100' : 'Valores absolutos';
+                this.setMessage(`Escala cambiada a ${scaleType}`, false);
+            }
+            
+            // Guardar preferencia en localStorage
+            localStorage.setItem('stockapp_use_base100', useBase100.toString());
+        }
+    }
+    
     // Ya no necesitamos métodos relacionados con API Key
 
     /**
      * Descarga los datos actuales como archivo CSV
      */
     downloadCSV() {
-        if (!this.currentData || this.currentData.length === 0) {
+        if (Object.keys(this.currentData).length === 0 || this.tickers.length === 0) {
             this.setMessage('No hay datos para descargar. Primero ejecute una consulta válida.');
             return;
         }
         
-        const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
-        
-        // Crear contenido CSV
-        const headers = ['Fecha', 'Apertura', 'Máximo', 'Mínimo', 'Cierre', 'Volumen'];
-        const rows = this.currentData.map(item => [
-            item.date,
-            item.open,
-            item.high,
-            item.low,
-            item.close,
-            item.volume || 0
-        ]);
-        
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => row.join(','))
-        ].join('\n');
-        
-        // Crear y descargar el archivo
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `${ticker}_data_${timestamp}.csv`;
-        
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        this.setMessage(`Datos guardados como '${filename}'`, false);
+        // Si hay un solo ticker, usamos el formato anterior
+        if (this.tickers.length === 1) {
+            const ticker = this.tickers[0];
+            const data = this.currentData[ticker];
+            
+            // Crear contenido CSV
+            const headers = ['Fecha', 'Apertura', 'Máximo', 'Mínimo', 'Cierre', 'Volumen'];
+            const rows = data.map(item => [
+                item.date,
+                item.open,
+                item.high,
+                item.low,
+                item.close,
+                item.volume || 0
+            ]);
+            
+            const csvContent = [
+                headers.join(','),
+                ...rows.map(row => row.join(','))
+            ].join('\n');
+            
+            // Crear y descargar el archivo
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `${ticker}_data_${timestamp}.csv`;
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            this.setMessage(`Datos guardados como '${filename}'`, false);
+        } 
+        // Si hay múltiples tickers, creamos un formato más complejo
+        else {
+            // Tomamos el primer ticker como referencia para las fechas
+            const referenceTicker = this.tickers[0];
+            const referenceDates = this.currentData[referenceTicker].map(item => item.date);
+            
+            // Creamos un encabezado con todos los tickers
+            const headers = ['Fecha'];
+            
+            // Para cada ticker, añadimos columnas para Apertura, Máximo, Mínimo, Cierre y Volumen
+            this.tickers.forEach(ticker => {
+                headers.push(
+                    `${ticker}_Apertura`,
+                    `${ticker}_Máximo`,
+                    `${ticker}_Mínimo`,
+                    `${ticker}_Cierre`,
+                    `${ticker}_Volumen`
+                );
+            });
+            
+            // Crear las filas con datos para cada fecha
+            const rows = [];
+            
+            referenceDates.forEach(date => {
+                const row = [date];
+                
+                // Para cada ticker, buscar los datos para esta fecha
+                this.tickers.forEach(ticker => {
+                    const dataForDate = this.currentData[ticker].find(item => item.date === date);
+                    
+                    if (dataForDate) {
+                        row.push(
+                            dataForDate.open,
+                            dataForDate.high,
+                            dataForDate.low,
+                            dataForDate.close,
+                            dataForDate.volume || 0
+                        );
+                    } else {
+                        // Si no hay datos para este ticker en esta fecha, agregar valores vacíos
+                        row.push('', '', '', '', '');
+                    }
+                });
+                
+                rows.push(row);
+            });
+            
+            const csvContent = [
+                headers.join(','),
+                ...rows.map(row => row.join(','))
+            ].join('\n');
+            
+            // Crear y descargar el archivo
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `multiple_tickers_data_${timestamp}.csv`;
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            this.setMessage(`Datos guardados como '${filename}'`, false);
+        }
     }
     
     /**
@@ -650,12 +959,11 @@ class StockApp {
      * Útil para llamar después de redimensionamientos o cambios de vista
      */
     redrawChart() {
-        if (!this.currentData || !document.getElementById('stock-chart')) {
+        if (Object.keys(this.currentData).length === 0 || !document.getElementById('stock-chart') || this.tickers.length === 0) {
             return;
         }
         
         const chartContainer = document.getElementById('stock-chart');
-        const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
         
         // Si el gráfico ya existe, destruirlo antes de volver a dibujarlo
         if (chartContainer.data) {
@@ -663,7 +971,7 @@ class StockApp {
         }
         
         // Volver a crear el gráfico con las dimensiones correctas
-        this.createCandlestickChart(ticker, this.currentData);
+        this.createCandlestickChart(this.tickers, this.currentData);
     }
 }
 
