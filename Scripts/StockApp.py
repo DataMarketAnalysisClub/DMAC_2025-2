@@ -583,9 +583,25 @@ class MultiStockApp(QWidget):
                     test_predictions = final_fit.forecast(steps=len(test))
                     rmse = np.sqrt(mean_squared_error(test, test_predictions))
                     mae = mean_absolute_error(test, test_predictions)
-                    print(f"RMSE: {rmse:.2f}, MAE: {mae:.2f}")
+                    
+                    # Calcular MAPE (Mean Absolute Percentage Error)
+                    mape = np.mean(np.abs((test - test_predictions) / test)) * 100
+                    
+                    # Calcular error porcentual relativo
+                    mean_price = np.mean(test)
+                    rmse_percent = (rmse / mean_price) * 100
+                    mae_percent = (mae / mean_price) * 100
+                    
+                    print(f"RMSE: {rmse:.2f} ({rmse_percent:.2f}%)")
+                    print(f"MAE: {mae:.2f} ({mae_percent:.2f}%)")
+                    print(f"MAPE: {mape:.2f}%")
+                    
+                    # Calcular residuales para el conjunto de test
+                    residuals = test - test_predictions
                 else:
-                    rmse, mae = None, None
+                    rmse, mae, mape = None, None, None
+                    rmse_percent, mae_percent = None, None
+                    residuals = None
                     print("No hay conjunto de test suficiente para métricas")
                 
                 # Generar fechas futuras
@@ -602,8 +618,14 @@ class MultiStockApp(QWidget):
                     'order': order,
                     'rmse': rmse,
                     'mae': mae,
+                    'mape': mape,
+                    'rmse_percent': rmse_percent,
+                    'mae_percent': mae_percent,
                     'lower_bound': lower_bound,
-                    'upper_bound': upper_bound
+                    'upper_bound': upper_bound,
+                    'residuals': residuals,
+                    'test_actual': test if len(test) > 0 else None,
+                    'test_predicted': test_predictions if len(test) > 0 else None
                 }
                 
                 print(f"✓ Predicción completada para {ticker}")
@@ -628,6 +650,23 @@ class MultiStockApp(QWidget):
             print(f"\n=== RESUMEN DE ERRORES ===")
             for err in errors:
                 print(f"  - {err}")
+    
+    def get_model_quality(self, mape):
+        """
+        Determina la calidad del modelo basado en MAPE
+        """
+        if mape is None:
+            return "Sin datos", "#999999"
+        elif mape < 10:
+            return "Excelente", "#4CAF50"
+        elif mape < 20:
+            return "Bueno", "#8BC34A"
+        elif mape < 30:
+            return "Aceptable", "#FFC107"
+        elif mape < 50:
+            return "Regular", "#FF9800"
+        else:
+            return "Malo", "#F44336"
     
     def create_chart(self):
         if not self.current_data or not self.tickers:
@@ -752,12 +791,29 @@ class MultiStockApp(QWidget):
                     order = pred_data['order']
                     rmse = pred_data['rmse']
                     mae = pred_data['mae']
+                    mape = pred_data['mape']
+                    rmse_percent = pred_data['rmse_percent']
+                    mae_percent = pred_data['mae_percent']
+                    
+                    # Obtener calidad del modelo
+                    quality, quality_color = self.get_model_quality(mape)
                     
                     metrics_text = f"<b>{ticker}</b><br>"
                     metrics_text += f"ARIMA{order}<br>"
+                    metrics_text += f"<b style='color:{quality_color}'>● {quality}</b><br>"
+                    metrics_text += "─────────<br>"
+                    
                     if rmse is not None:
+                        metrics_text += f"<b>Errores:</b><br>"
                         metrics_text += f"RMSE: {rmse:.2f}<br>"
-                        metrics_text += f"MAE: {mae:.2f}"
+                        metrics_text += f"MAE: {mae:.2f}<br>"
+                        if mape is not None:
+                            metrics_text += f"MAPE: {mape:.2f}%<br>"
+                        metrics_text += "─────────<br>"
+                        metrics_text += f"<b>% Relativos:</b><br>"
+                        if rmse_percent is not None:
+                            metrics_text += f"RMSE: {rmse_percent:.1f}%<br>"
+                            metrics_text += f"MAE: {mae_percent:.1f}%"
                     
                     annotations.append(
                         dict(
@@ -768,14 +824,14 @@ class MultiStockApp(QWidget):
                             text=metrics_text,
                             showarrow=False,
                             align='left',
-                            bgcolor='rgba(255, 255, 255, 0.9)',
-                            bordercolor='#cccccc',
-                            borderwidth=1,
-                            borderpad=5,
+                            bgcolor='rgba(255, 255, 255, 0.95)',
+                            bordercolor=quality_color,
+                            borderwidth=2,
+                            borderpad=8,
                             font=dict(size=10)
                         )
                     )
-                    y_position -= 0.15
+                    y_position -= 0.28
         
         # Layout
         fig = go.Figure(data=traces)
@@ -788,7 +844,7 @@ class MultiStockApp(QWidget):
             legend=dict(x=0, y=1, orientation='h'),
             height=550,
             annotations=annotations,
-            margin=dict(r=150)  # Espacio para las métricas
+            margin=dict(r=200)  # Más espacio para las métricas mejoradas
         )
         
         html_str = fig.to_html(include_plotlyjs='cdn')
