@@ -302,7 +302,7 @@ class StockApp {
                     
                     <div class="api-info-panel">
                         <p>Esta aplicación utiliza Yahoo Finance para obtener datos de acciones en tiempo real.</p>
-                        <p>No se requiere configuración de API Key.</p>
+                        <p>Accede a información actualizada del mercado de valores con visualización avanzada.</p>
                     </div>
                     
                     <div class="button-container">
