@@ -88,6 +88,15 @@ class MultiStockApp(QWidget):
              'decreasing': {'line': {'color': '#34495E'}, 'fillcolor': 'rgba(52, 73, 94, 0.5)'}},
         ]
         
+        # Colores para las bandas de confianza
+        self.confidence_colors = [
+            'rgba(0, 82, 147, 0.2)',
+            'rgba(0, 166, 81, 0.2)',
+            'rgba(242, 100, 25, 0.2)',
+            'rgba(26, 188, 156, 0.2)',
+            'rgba(244, 208, 63, 0.2)',
+        ]
+        
         # Layout principal
         self.main_layout = QVBoxLayout()
         self.setLayout(self.main_layout)
@@ -243,16 +252,22 @@ class MultiStockApp(QWidget):
         manual_params_layout.addStretch()
         prediction_layout.addLayout(manual_params_layout)
         
-        # Fila 3: Horizonte y botón
+        # Fila 3: Horizonte, intervalo de confianza y botón
         horizon_layout = QHBoxLayout()
         
-        horizon_label = QLabel('Horizonte de predicción:')
+        horizon_label = QLabel('Horizonte:')
         horizon_layout.addWidget(horizon_label)
         
         self.horizon_input = QComboBox()
         self.horizon_input.addItems(['7 días', '14 días', '30 días', '60 días', '90 días'])
         self.horizon_input.setCurrentText('30 días')
         horizon_layout.addWidget(self.horizon_input)
+        
+        # Checkbox para bandas de confianza
+        self.confidence_checkbox = QCheckBox('Mostrar intervalo 95%')
+        self.confidence_checkbox.setChecked(True)
+        self.confidence_checkbox.stateChanged.connect(self.toggle_confidence_bands)
+        horizon_layout.addWidget(self.confidence_checkbox)
         
         horizon_layout.addStretch()
         
@@ -326,6 +341,10 @@ class MultiStockApp(QWidget):
         self.d_input.setVisible(is_manual)
         self.q_label.setVisible(is_manual)
         self.q_input.setVisible(is_manual)
+    
+    def toggle_confidence_bands(self):
+        if self.predictions:
+            self.create_chart()
     
     def change_color_scheme(self, scheme_name):
         if scheme_name == 'Verde/Rojo (Clásico)':
@@ -452,8 +471,10 @@ class MultiStockApp(QWidget):
                     
                     final_fit = ARIMA(close_prices, order=order).fit()
                 
-                # Generar predicciones
-                forecast = final_fit.forecast(steps=horizon)
+                # Generar predicciones con intervalo de confianza
+                forecast_result = final_fit.get_forecast(steps=horizon)
+                forecast = forecast_result.predicted_mean
+                forecast_ci = forecast_result.conf_int(alpha=0.05)  # 95% de confianza
                 
                 # Calcular métricas en datos de test
                 if len(test) > 0:
@@ -475,7 +496,9 @@ class MultiStockApp(QWidget):
                     'dates': future_dates,
                     'order': order,
                     'rmse': rmse,
-                    'mae': mae
+                    'mae': mae,
+                    'lower_bound': forecast_ci.iloc[:, 0].values,
+                    'upper_bound': forecast_ci.iloc[:, 1].values
                 }
                 
             except Exception as e:
@@ -495,6 +518,7 @@ class MultiStockApp(QWidget):
         traces = []
         
         use_base100 = len(self.tickers) > 1 and self.use_base100
+        show_confidence = self.confidence_checkbox.isChecked()
         
         first_values = {}
         if use_base100:
@@ -531,17 +555,23 @@ class MultiStockApp(QWidget):
                 close=close_vals,
                 name=ticker,
                 increasing=colors['increasing'],
-                decreasing=colors['decreasing']
+                decreasing=colors['decreasing'],
+                legendgroup=ticker
             )
             traces.append(trace)
             
             # Agregar predicciones si existen
             if ticker in self.predictions:
                 pred_data = self.predictions[ticker]
-                forecast_vals = pred_data['forecast']
+                forecast_vals = pred_data['forecast'].copy()
+                lower_vals = pred_data['lower_bound'].copy()
+                upper_vals = pred_data['upper_bound'].copy()
                 
                 if use_base100 and ticker in first_values:
-                    forecast_vals = forecast_vals / first_values[ticker] * 100
+                    base = first_values[ticker]
+                    forecast_vals = forecast_vals / base * 100
+                    lower_vals = lower_vals / base * 100
+                    upper_vals = upper_vals / base * 100
                 
                 # Línea de predicción
                 pred_trace = go.Scatter(
@@ -550,9 +580,38 @@ class MultiStockApp(QWidget):
                     mode='lines',
                     name=f'{ticker} Predicción',
                     line=dict(dash='dash', width=2),
-                    legendgroup=ticker
+                    legendgroup=ticker,
+                    showlegend=True
                 )
                 traces.append(pred_trace)
+                
+                # Bandas de confianza
+                if show_confidence:
+                    # Banda superior
+                    upper_trace = go.Scatter(
+                        x=pred_data['dates'],
+                        y=upper_vals,
+                        mode='lines',
+                        line=dict(width=0),
+                        showlegend=False,
+                        legendgroup=ticker,
+                        hoverinfo='skip'
+                    )
+                    traces.append(upper_trace)
+                    
+                    # Banda inferior con relleno
+                    lower_trace = go.Scatter(
+                        x=pred_data['dates'],
+                        y=lower_vals,
+                        mode='lines',
+                        line=dict(width=0),
+                        fillcolor=self.confidence_colors[idx % len(self.confidence_colors)],
+                        fill='tonexty',
+                        name=f'{ticker} IC 95%',
+                        legendgroup=ticker,
+                        showlegend=True
+                    )
+                    traces.append(lower_trace)
         
         # Título dinámico
         if len(self.tickers) == 1:
@@ -630,15 +689,19 @@ class MultiStockApp(QWidget):
                 if ticker in self.predictions:
                     pred_data = self.predictions[ticker]
                     pred_df = pd.DataFrame({
-                        'Close': pred_data['forecast']
+                        'Close': pred_data['forecast'],
+                        'Lower_95': pred_data['lower_bound'],
+                        'Upper_95': pred_data['upper_bound']
                     }, index=pred_data['dates'])
                     pred_df['Open'] = pred_df['Close']
-                    pred_df['High'] = pred_df['Close']
-                    pred_df['Low'] = pred_df['Close']
+                    pred_df['High'] = pred_df['Upper_95']
+                    pred_df['Low'] = pred_df['Lower_95']
                     pred_df['Prediccion'] = True
                     
                     df_copy = df.copy()
                     df_copy['Prediccion'] = False
+                    df_copy['Lower_95'] = ''
+                    df_copy['Upper_95'] = ''
                     
                     combined_df = pd.concat([df_copy, pred_df])
                     filename = f"{ticker}_data_con_prediccion_{timestamp}.csv"
@@ -663,7 +726,9 @@ class MultiStockApp(QWidget):
                 columns = ['Fecha']
                 for ticker in self.tickers:
                     columns.extend([f'{ticker}_Apertura', f'{ticker}_Máximo', 
-                                  f'{ticker}_Mínimo', f'{ticker}_Cierre', f'{ticker}_Prediccion'])
+                                  f'{ticker}_Mínimo', f'{ticker}_Cierre', 
+                                  f'{ticker}_Prediccion', f'{ticker}_IC95_Inferior', 
+                                  f'{ticker}_IC95_Superior'])
                 
                 rows = []
                 for date in all_dates:
@@ -674,14 +739,18 @@ class MultiStockApp(QWidget):
                         # Datos históricos
                         if date in df.index:
                             row.extend([df.loc[date, 'Open'], df.loc[date, 'High'],
-                                      df.loc[date, 'Low'], df.loc[date, 'Close'], 'No'])
+                                      df.loc[date, 'Low'], df.loc[date, 'Close'], 
+                                      'No', '', ''])
                         # Predicciones
                         elif ticker in self.predictions and date in self.predictions[ticker]['dates']:
                             pred_idx = list(self.predictions[ticker]['dates']).index(date)
                             pred_val = self.predictions[ticker]['forecast'][pred_idx]
-                            row.extend([pred_val, pred_val, pred_val, pred_val, 'Sí'])
+                            lower_val = self.predictions[ticker]['lower_bound'][pred_idx]
+                            upper_val = self.predictions[ticker]['upper_bound'][pred_idx]
+                            row.extend([pred_val, upper_val, lower_val, pred_val, 
+                                      'Sí', lower_val, upper_val])
                         else:
-                            row.extend(['', '', '', '', ''])
+                            row.extend(['', '', '', '', '', '', ''])
                     rows.append(row)
                 
                 result_df = pd.DataFrame(rows, columns=columns)
@@ -692,14 +761,6 @@ class MultiStockApp(QWidget):
             self.set_message(f"Datos guardados en '{filename}'", False)
         
         except Exception as e:
-            self.set_message(f"Error al guardar CSV: {e}")
-
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    window = MultiStockApp()
-    window.show()
-    sys.exit(app.exec_())        except Exception as e:
             self.set_message(f"Error al guardar CSV: {e}")
 
 
