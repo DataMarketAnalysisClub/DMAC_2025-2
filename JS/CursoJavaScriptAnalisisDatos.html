@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curso de Análisis de Datos con JavaScript</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: #0d47a1;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            margin: 0;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            font-style: italic;
+            opacity: 0.8;
+            margin-top: 10px;
+        }
+        
+        .section {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+        
+        h2 {
+            color: #0d47a1;
+            border-bottom: 2px solid #e1e4e8;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        
+        .grafico-container {
+            width: 100%;
+            height: 500px;
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
+        }
+        
+        .code-example {
+            background-color: #f8f9fa;
+            border-left: 4px solid #0d47a1;
+            padding: 15px;
+            margin: 20px 0;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #0d47a1;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+            transition: background-color 0.3s;
+        }
+        
+        .btn:hover {
+            background-color: #1565c0;
+        }
+        
+        .info-box {
+            background-color: #e8f4fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .warning-box {
+            background-color: #fff8e1;
+            border-left: 4px solid #ffb300;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #f2f2f2;
+            color: #333;
+        }
+        
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            margin-top: 30px;
+            background-color: #333;
+            color: white;
+        }
+        
+        /* Estilos para dispositivos móviles */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .grafico-container {
+                height: 300px;
+            }
+            
+            .code-example {
+                font-size: 12px;
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Análisis de Datos Financieros con JavaScript</h1>
+            <p class="subtitle">Guía práctica para importación de bibliotecas, manejo de datos, modelado y visualización</p>
+        </div>
+    </header>
+    
+    <div class="container">
+        <div class="section">
+            <h2>1. Introducción</h2>
+            <p>Este tutorial te guiará a través del proceso completo de análisis de datos financieros utilizando JavaScript puro en el navegador. Aprenderás a:</p>
+            <ul>
+                <li>Importar bibliotecas externas de forma dinámica</li>
+                <li>Obtener datos financieros de Yahoo Finance</li>
+                <li>Procesar y manipular conjuntos de datos</li>
+                <li>Aplicar modelos estadísticos como ARIMA</li>
+                <li>Crear visualizaciones interactivas con Plotly.js</li>
+            </ul>
+            
+            <div class="info-box">
+                <p><strong>Nota:</strong> Este tutorial está enfocado en propósitos educativos y de demostración. Para aplicaciones en producción, considera el uso de herramientas más robustas como Python con pandas, statsmodels y scikit-learn.</p>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>2. Importación de Bibliotecas</h2>
+            <p>En JavaScript para navegadores, existen diferentes formas de cargar bibliotecas externas. La más flexible es la carga dinámica mediante JavaScript:</p>
+            
+            <div class="code-example">
+                <pre>// Función para cargar scripts dinámicamente
+function cargarScript(url) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = url;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error(`Error al cargar: ${url}`));
+        document.head.appendChild(script);
+    });
+}
+
+// Ejemplo de uso
+async function cargarBibliotecas() {
+    try {
+        await cargarScript('https://cdn.plot.ly/plotly-latest.min.js');
+        await cargarScript('https://cdn.jsdelivr.net/npm/arima@0.2.5/load.js');
+        console.log('Bibliotecas cargadas correctamente');
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}</pre>
+            </div>
+            
+            <button id="btn-cargar" class="btn">Cargar Bibliotecas</button>
+            <div id="status-bibliotecas"></div>
+        </div>
+        
+        <div class="section">
+            <h2>3. Obtención de Datos Financieros</h2>
+            <p>Podemos obtener datos de Yahoo Finance utilizando su API no oficial:</p>
+            
+            <div class="code-example">
+                <pre>async function obtenerDatosYahooFinance(symbol, interval = '1d', range = '1y') {
+    // Construir URL para Yahoo Finance
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}`;
+    
+    // Usar un proxy para evitar problemas CORS
+    const proxyUrl = `https://cors-anywhere.herokuapp.com/${url}`;
+    
+    const respuesta = await fetch(proxyUrl);
+    const datos = await respuesta.json();
+    
+    // Procesar datos
+    const resultado = datos.chart.result[0];
+    const timestamps = resultado.timestamp;
+    const cotizaciones = resultado.indicators.quote[0];
+    
+    // Formatear datos
+    return timestamps.map((timestamp, i) => ({
+        fecha: new Date(timestamp * 1000).toISOString().split('T')[0],
+        apertura: cotizaciones.open[i],
+        maximo: cotizaciones.high[i],
+        minimo: cotizaciones.low[i],
+        cierre: cotizaciones.close[i],
+        volumen: cotizaciones.volume[i]
+    }));
+}</pre>
+            </div>
+            
+            <button id="btn-obtener-datos" class="btn">Obtener Datos de AAPL</button>
+            <div id="datos-resumen"></div>
+        </div>
+        
+        <div class="section">
+            <h2>4. Visualización de Datos</h2>
+            <p>Utilizando Plotly.js, podemos crear gráficos interactivos para analizar datos financieros:</p>
+            
+            <div id="grafico" class="grafico-container"></div>
+            
+            <div class="code-example">
+                <pre>function crearGraficoVelas(datos, contenedorId) {
+    const trace = {
+        x: datos.map(d => d.fecha),
+        open: datos.map(d => d.apertura),
+        high: datos.map(d => d.maximo),
+        low: datos.map(d => d.minimo),
+        close: datos.map(d => d.cierre),
+        type: 'candlestick',
+        increasing: {line: {color: '#00A651'}, fillcolor: 'rgba(0, 166, 81, 0.5)'},
+        decreasing: {line: {color: '#E63946'}, fillcolor: 'rgba(230, 57, 70, 0.5)'}
+    };
+    
+    const layout = {
+        title: 'Gráfico de Velas',
+        xaxis: {title: 'Fecha'},
+        yaxis: {title: 'Precio'}
+    };
+    
+    Plotly.newPlot(contenedorId, [trace], layout);
+}</pre>
+            </div>
+            
+            <button id="btn-crear-grafico" class="btn">Crear Gráfico de Velas</button>
+        </div>
+        
+        <div class="section">
+            <h2>5. Modelos Estadísticos</h2>
+            <p>La implementación de modelos como ARIMA permite realizar predicciones sobre series temporales:</p>
+            
+            <div class="code-example">
+                <pre>function modeloARIMA(datos, params = {p: 1, d: 1, q: 1}, horizonte = 30) {
+    // Extraer valores de cierre
+    const valores = datos.map(d => d.cierre);
+    
+    // Configurar modelo ARIMA
+    const arimaConfig = {
+        p: params.p,
+        d: params.d,
+        q: params.q,
+        verbose: false
+    };
+    
+    // Entrenar modelo y hacer predicción
+    const arimaModel = new ARIMA(arimaConfig).train(valores);
+    const prediccion = arimaModel.predict(horizonte);
+    
+    return prediccion;
+}</pre>
+            </div>
+            
+            <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+                <label for="input-p">p:</label>
+                <input id="input-p" type="number" min="0" value="5" style="width:70px;padding:6px;border:1px solid #ccc;border-radius:4px;" />
+                <label for="input-d">d:</label>
+                <input id="input-d" type="number" min="0" value="1" style="width:70px;padding:6px;border:1px solid #ccc;border-radius:4px;" />
+                <label for="input-q">q:</label>
+                <input id="input-q" type="number" min="0" value="1" style="width:70px;padding:6px;border:1px solid #ccc;border-radius:4px;" />
+                <button id="btn-prediccion" class="btn">Realizar Predicción</button>
+            </div>
+            <div id="grafico-prediccion" class="grafico-container"></div>
+        </div>
+        
+        <div class="section">
+            <h2>6. Análisis Comparativo</h2>
+            <p>Podemos comparar el rendimiento de diferentes acciones normalizando a base 100:</p>
+            
+            <div id="grafico-comparativo" class="grafico-container"></div>
+            
+            <div class="code-example">
+                <pre>function normalizarBase100(datos) {
+    const valorBase = datos[0].cierre;
+    
+    return datos.map(item => ({
+        fecha: item.fecha,
+        cierre: (item.cierre / valorBase) * 100
+    }));
+}
+
+function crearGraficoComparativo(datosPorTicker, contenedorId) {
+    const trazas = Object.entries(datosPorTicker).map(([ticker, datos], i) => {
+        const datosNormalizados = normalizarBase100(datos);
+        
+        return {
+            x: datosNormalizados.map(d => d.fecha),
+            y: datosNormalizados.map(d => d.cierre),
+            type: 'scatter',
+            mode: 'lines',
+            name: ticker
+        };
+    });
+    
+    const layout = {
+        title: 'Comparación de Rendimiento (Base 100)',
+        xaxis: {title: 'Fecha'},
+        yaxis: {title: 'Valor (Base 100)'}
+    };
+    
+    Plotly.newPlot(contenedorId, trazas, layout);
+}</pre>
+            </div>
+            
+            <button id="btn-comparar" class="btn">Comparar Tickers</button>
+        </div>
+        
+        <div class="section">
+            <h2>7. Implementación Completa</h2>
+            <p>Hemos creado un archivo completo con todas estas funcionalidades que puedes revisar:</p>
+            <p><strong>Archivo:</strong> <code>CursoJavaScriptAnalisisDatos.js</code></p>
+            
+            <div class="info-box">
+                <p>El archivo incluye implementaciones detalladas de:</p>
+                <ul>
+                    <li>Carga dinámica de bibliotecas con manejo de errores y fallbacks</li>
+                    <li>API para interactuar con Yahoo Finance</li>
+                    <li>Procesamiento de datos financieros</li>
+                    <li>Modelos estadísticos (MA, AR, ARIMA)</li>
+                    <li>Visualización interactiva con múltiples tipos de gráficos</li>
+                </ul>
+                <p>¡Explora el código para aprender más sobre análisis de datos en JavaScript!</p>
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        <div class="container">
+            <p>© 2025 - Curso JavaScript para Análisis de Datos</p>
+            <p>Creado para fines educativos</p>
+        </div>
+    </footer>
+    
+    <!-- Cargar nuestro archivo principal de curso -->
+    <script src="CursoJavaScriptAnalisisDatos.js"></script>
+    
+    <!-- Script para la demostración interactiva -->
+    <script>
+        // Variables para almacenar datos de demostración
+        let datosDemostracion = {};
+        let bibliotecasCargadas = false;
+        
+        // Elementos del DOM
+        const btnCargar = document.getElementById('btn-cargar');
+        const btnObtenerDatos = document.getElementById('btn-obtener-datos');
+        const btnCrearGrafico = document.getElementById('btn-crear-grafico');
+        const btnPrediccion = document.getElementById('btn-prediccion');
+        const btnComparar = document.getElementById('btn-comparar');
+        
+        const statusBibliotecas = document.getElementById('status-bibliotecas');
+        const datosResumen = document.getElementById('datos-resumen');
+        
+        // Event listeners
+        btnCargar.addEventListener('click', async () => {
+            statusBibliotecas.innerHTML = '<p>Cargando bibliotecas...</p>';
+            statusBibliotecas.style.color = '#2196F3';
+            
+            try {
+                await cargarBibliotecas();
+                bibliotecasCargadas = true;
+                statusBibliotecas.innerHTML = '<p>✅ Bibliotecas cargadas correctamente</p>';
+                statusBibliotecas.style.color = '#4CAF50';
+            } catch (error) {
+                statusBibliotecas.innerHTML = `<p>❌ Error al cargar bibliotecas: ${error.message}</p>`;
+                statusBibliotecas.style.color = '#F44336';
+            }
+        });
+        
+        btnObtenerDatos.addEventListener('click', async () => {
+            if (!bibliotecasCargadas) {
+                datosResumen.innerHTML = '<p>⚠️ Primero debes cargar las bibliotecas</p>';
+                datosResumen.style.color = '#FF9800';
+                return;
+            }
+            
+            datosResumen.innerHTML = '<p>Obteniendo datos de AAPL...</p>';
+            datosResumen.style.color = '#2196F3';
+            
+            try {
+                const yahooAPI = new YahooFinanceAPI();
+                datosDemostracion.AAPL = await yahooAPI.obtenerDatosHistoricos('AAPL', '1d', '3mo');
+                datosDemostracion.MSFT = await yahooAPI.obtenerDatosHistoricos('MSFT', '1d', '3mo');
+                datosDemostracion.GOOG = await yahooAPI.obtenerDatosHistoricos('GOOG', '1d', '3mo');
+                
+                // Mostrar resumen
+                datosResumen.innerHTML = `
+                    <p>✅ Datos obtenidos correctamente:</p>
+                    <ul>
+                        <li>AAPL: ${datosDemostracion.AAPL.length} registros</li>
+                        <li>MSFT: ${datosDemostracion.MSFT.length} registros</li>
+                        <li>GOOG: ${datosDemostracion.GOOG.length} registros</li>
+                    </ul>
+                    <p>Rango: ${datosDemostracion.AAPL[0].fecha} a ${datosDemostracion.AAPL[datosDemostracion.AAPL.length-1].fecha}</p>
+                `;
+                datosResumen.style.color = '#4CAF50';
+            } catch (error) {
+                datosResumen.innerHTML = `<p>❌ Error al obtener datos: ${error.message}</p>`;
+                datosResumen.style.color = '#F44336';
+            }
+        });
+        
+        btnCrearGrafico.addEventListener('click', () => {
+            if (!bibliotecasCargadas || !datosDemostracion.AAPL) {
+                alert('Primero debes cargar las bibliotecas y obtener los datos');
+                return;
+            }
+            
+            const visualizador = new VisualizadorFinanciero('grafico');
+            visualizador.crearGraficoVelas(datosDemostracion.AAPL, 'Apple (AAPL) - Últimos 3 meses');
+        });
+        
+        btnPrediccion.addEventListener('click', () => {
+            if (!bibliotecasCargadas || !datosDemostracion.AAPL) {
+                alert('Primero debes cargar las bibliotecas y obtener los datos');
+                return;
+            }
+            
+            // Crear el gráfico de velas
+            const visualizador = new VisualizadorFinanciero('grafico-prediccion');
+            visualizador.crearGraficoVelas(datosDemostracion.AAPL, 'Apple (AAPL) con Predicción ARIMA');
+            
+            // Crear y aplicar modelo predictivo leyendo p,d,q desde los inputs
+            try {
+                // Leer valores de los inputs
+                const p = parseInt(document.getElementById('input-p').value, 10);
+                const d = parseInt(document.getElementById('input-d').value, 10);
+                const q = parseInt(document.getElementById('input-q').value, 10);
+
+                // Validar
+                if (Number.isNaN(p) || Number.isNaN(d) || Number.isNaN(q) || p < 0 || d < 0 || q < 0) {
+                    alert('Por favor ingresa valores válidos (enteros >= 0) para p, d y q');
+                    return;
+                }
+
+                // Mostrar en el status los parámetros seleccionados
+                statusBibliotecas.innerHTML = `<p>Parámetros ARIMA seleccionados: p=${p}, d=${d}, q=${q}</p>`;
+
+                const modelador = new ModelosSeriesTemporales(datosDemostracion.AAPL);
+                const prediccion = modelador.modeloARIMA(datosDemostracion.AAPL, {p: p, d: d, q: q}, 30);
+
+                visualizador.agregarPrediccion(prediccion, `Predicción ARIMA (p=${p},d=${d},q=${q})`, {
+                    color: '#FF9800',
+                    tipoLinea: 'dashdot',
+                    grosor: 3
+                });
+            } catch (error) {
+                alert('Error al realizar predicción: ' + error.message);
+            }
+        });
+        
+        btnComparar.addEventListener('click', () => {
+            if (!bibliotecasCargadas || !datosDemostracion.AAPL) {
+                alert('Primero debes cargar las bibliotecas y obtener los datos');
+                return;
+            }
+            
+            const visualizador = new VisualizadorFinanciero('grafico-comparativo');
+            visualizador.crearGraficoComparativo(datosDemostracion, true, 'Comparación de Big Tech');
+        });
+    </script>
+</body>
+</html>

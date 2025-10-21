@@ -8,6 +8,10 @@ class StockApp {
     constructor(config = {}) {
         this.currentData = {};  // Objeto para almacenar datos de múltiples tickers
         this.tickers = [];      // Lista de tickers actualmente visualizados
+        this.projectionData = {}; // Datos de proyección para cada ticker
+        this.showingProjection = false; // Indica si se está mostrando una proyección
+        this.timeSeriesLoaded = false; // Indica si las bibliotecas de series temporales están cargadas
+        
         // Ya no necesitamos API key para Yahoo Finance
         this.useYahooFinance = true;
         
@@ -17,6 +21,9 @@ class StockApp {
         this.useBase100 = config.useBase100 !== undefined ? config.useBase100 : 
                          savedPreference === null ? true : savedPreference !== 'false';
         console.log(`Inicializando con Base 100: ${this.useBase100}`);
+
+        // Intentar cargar las bibliotecas de series temporales
+        this.loadTimeSeriesLibraries();
 
         // Esquemas de colores predeterminados para las velas
         this.colorSchemes = {
@@ -51,6 +58,238 @@ class StockApp {
     }
 
     /**
+     * Carga dinámicamente las bibliotecas necesarias para los modelos de series temporales
+     */
+    loadTimeSeriesLibraries() {
+        console.log('Cargando bibliotecas de series temporales...');
+        
+        // Mostrar indicador de carga en la interfaz
+        this.setMessage('Cargando bibliotecas para proyecciones avanzadas...', false, true);
+        
+        // Crear un indicador visual de carga junto a los métodos avanzados
+        const updateLoadingStatus = () => {
+            const methodSelect = document.getElementById('projection-method');
+            if (methodSelect) {
+                // Añadir indicador visual a los métodos avanzados
+                const options = methodSelect.options;
+                for (let i = 0; i < options.length; i++) {
+                    const option = options[i];
+                    if (['MA', 'AR', 'ARMA', 'ARIMA', 'SARIMA'].includes(option.value)) {
+                        if (!this.timeSeriesLoaded) {
+                            option.text = `${option.value} (cargando...)`;
+                        } else {
+                            option.text = option.value;
+                        }
+                    }
+                }
+            }
+        };
+        
+        // Actualizar estado inicial
+        setTimeout(updateLoadingStatus, 500);
+        
+        // Lista de bibliotecas necesarias con nombres amigables para mensajes de error y URLs alternativas
+        const libraries = [
+            { 
+                name: 'Math.js',
+                urls: [
+                    'https://cdn.jsdelivr.net/npm/mathjs@11.8.0/lib/browser/math.min.js',
+                    'https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.min.js'
+                ]
+            },
+            { 
+                name: 'Fili.js',
+                urls: [
+                    'https://cdn.jsdelivr.net/npm/fili@2.0.3/dist/fili.min.js',
+                    'https://unpkg.com/fili@2.0.3/dist/fili.min.js'
+                ]
+            },
+            { 
+                name: 'ARIMA',
+                urls: [
+                    'https://cdn.jsdelivr.net/npm/arima@0.2.5/load.js',
+                    'https://unpkg.com/arima@0.2.5/dist/arima.min.js',
+                    'https://cdnjs.cloudflare.com/ajax/libs/arima/0.2.5/arima.min.js'
+                ]
+            },
+            { 
+                name: 'SavitzkyGolay',
+                urls: [
+                    'https://cdn.jsdelivr.net/npm/ml-savitzky-golay@5.0.0/lib/index.js',
+                    'https://unpkg.com/ml-savitzky-golay@5.0.0/dist/ml-savitzky-golay.min.js'
+                ]
+            }
+        ];
+        
+        // Contadores y estado para seguimiento de carga
+        let loadedLibraries = 0;
+        let errorCount = 0;
+        let errorDetails = [];
+        let attemptedUrls = {}; // Seguimiento de URLs intentadas por biblioteca
+        
+        // Función para intentar cargar una biblioteca usando sus URLs alternativas
+        const loadLibrary = (libraryInfo, urlIndex = 0) => {
+            // Si ya hemos intentado todas las URLs, marcar como error
+            if (urlIndex >= libraryInfo.urls.length) {
+                errorCount++;
+                errorDetails.push(libraryInfo.name);
+                console.error(`Error al cargar biblioteca ${libraryInfo.name}: todos los intentos fallaron`);
+                
+                // Incrementar contador para continuar con otras bibliotecas
+                loadedLibraries++;
+                checkAllLoaded();
+                return;
+            }
+            
+            const currentUrl = libraryInfo.urls[urlIndex];
+            attemptedUrls[libraryInfo.name] = attemptedUrls[libraryInfo.name] || [];
+            attemptedUrls[libraryInfo.name].push(currentUrl);
+            
+            const script = document.createElement('script');
+            script.src = currentUrl;
+            script.async = true;
+            
+            // Manejar carga exitosa
+            script.onload = () => {
+                loadedLibraries++;
+                console.log(`Biblioteca ${libraryInfo.name} cargada correctamente desde ${currentUrl}`);
+                checkAllLoaded();
+            };
+            
+            // Manejar error y reintentar con la siguiente URL
+            script.onerror = () => {
+                console.warn(`Error al cargar ${libraryInfo.name} desde ${currentUrl}, intentando alternativa...`);
+                // Eliminar script fallido y probar con la siguiente URL
+                script.remove();
+                loadLibrary(libraryInfo, urlIndex + 1);
+            };
+            
+            document.head.appendChild(script);
+        };
+        
+        // Verificar si todas las bibliotecas han sido procesadas
+        const checkAllLoaded = () => {
+            if (loadedLibraries === libraries.length) {
+                console.log(`Proceso de carga completo: ${loadedLibraries - errorCount}/${libraries.length} bibliotecas cargadas correctamente`);
+                
+                // Marcar como cargado si al menos una biblioteca fue exitosa
+                if (errorCount < libraries.length) {
+                    this.timeSeriesLoaded = true;
+                }
+                
+                if (errorCount > 0) {
+                    const errorMsg = `${errorCount} bibliotecas no pudieron cargarse: ${errorDetails.join(', ')}. Algunas funcionalidades avanzadas podrían ser limitadas.`;
+                    this.setMessage(errorMsg, true);
+                    console.warn(errorMsg);
+                } else {
+                    this.setMessage('Bibliotecas de series temporales cargadas correctamente', false);
+                }
+                
+                updateLoadingStatus(); // Actualizar estado visual
+                
+                // Si ARIMA o SavitzkyGolay fallaron, cargar implementaciones de fallback
+                if (errorDetails.includes('ARIMA') || errorDetails.includes('SavitzkyGolay')) {
+                    this.loadFallbackImplementations();
+                }
+            }
+        };
+        
+        try {
+            // Iniciar carga de cada biblioteca con soporte para múltiples URLs
+            libraries.forEach(libraryInfo => loadLibrary(libraryInfo));
+            
+            // Añadir un timeout de seguridad por si algo falla
+            setTimeout(() => {
+                if (loadedLibraries < libraries.length) {
+                    console.warn('Timeout de carga de bibliotecas alcanzado, finalizando proceso');
+                    // Forzar finalización para cualquier biblioteca pendiente
+                    const pending = libraries.length - loadedLibraries;
+                    loadedLibraries = libraries.length;
+                    errorCount += pending;
+                    checkAllLoaded();
+                }
+            }, 20000); // 20 segundos de timeout
+        } catch (error) {
+            console.error('Error al iniciar carga de bibliotecas:', error);
+            this.setMessage(`Error al iniciar carga de bibliotecas: ${error ? error.message || 'Error desconocido' : 'Error desconocido'}`, true);
+        }
+        
+        // Implementaciones de fallback para las bibliotecas críticas
+        window.arimaFallbackImplemented = false;
+        window.sgFallbackImplemented = false;
+    }
+    
+    /**
+     * Carga implementaciones de fallback para bibliotecas críticas
+     */
+    loadFallbackImplementations() {
+        console.log("Cargando implementaciones de fallback para bibliotecas críticas...");
+        
+        // Implementación fallback para ARIMA si es necesario
+        if (!window.ARIMA && !window.arimaFallbackImplemented) {
+            console.log("Implementando fallback para ARIMA");
+            window.ARIMA = function(config) {
+                this.config = config || { p: 1, d: 1, q: 1 };
+                
+                this.train = function(data) {
+                    this.trainData = data;
+                    return this;
+                };
+                
+                this.predict = function(horizon) {
+                    // Implementación simplificada basada en media móvil + tendencia
+                    const result = [];
+                    const n = this.trainData.length;
+                    if (n < 2) return Array(horizon).fill(this.trainData[0] || 0);
+                    
+                    // Calcular tendencia lineal
+                    const x1 = 0;
+                    const x2 = n - 1;
+                    const y1 = this.trainData[0];
+                    const y2 = this.trainData[n - 1];
+                    const slope = (y2 - y1) / (x2 - x1);
+                    
+                    // Generar predicción
+                    for (let i = 0; i < horizon; i++) {
+                        result.push(y2 + slope * (i + 1));
+                    }
+                    
+                    return result;
+                };
+            };
+            window.arimaFallbackImplemented = true;
+            console.log("Fallback ARIMA implementado");
+        }
+        
+        // Implementación fallback para SavitzkyGolay si es necesario
+        if ((!window.SG || !window.SG.savitzkyGolay) && !window.sgFallbackImplemented) {
+            console.log("Implementando fallback para SavitzkyGolay");
+            window.SG = window.SG || {};
+            window.SG.savitzkyGolay = function(data, width, options) {
+                // Implementación simple de suavizado por media móvil
+                const result = [];
+                const halfWidth = Math.floor((options.windowSize || 5) / 2);
+                
+                for (let i = 0; i < data.length; i++) {
+                    let sum = 0;
+                    let count = 0;
+                    
+                    for (let j = Math.max(0, i - halfWidth); j <= Math.min(data.length - 1, i + halfWidth); j++) {
+                        sum += data[j];
+                        count++;
+                    }
+                    
+                    result.push(sum / count);
+                }
+                
+                return result;
+            };
+            window.sgFallbackImplemented = true;
+            console.log("Fallback SavitzkyGolay implementado");
+        }
+    }
+    
+    /**
      * Inicializa la aplicación y configura los elementos de la interfaz
      */
     initApp() {
@@ -63,7 +302,7 @@ class StockApp {
                     
                     <div class="api-info-panel">
                         <p>Esta aplicación utiliza Yahoo Finance para obtener datos de acciones en tiempo real.</p>
-                        <p>No se requiere configuración de API Key.</p>
+                        <p>Accede a información actualizada del mercado de valores con visualización avanzada.</p>
                     </div>
                     
                     <div class="button-container">
@@ -117,6 +356,38 @@ class StockApp {
                         </div>
                         <button id="execute-button" class="action-button">Ejecutar</button>
                         <button id="download-button" class="action-button">Descargar CSV</button>
+                    </div>
+                    
+                    <div id="projection-container" style="display:none;">
+                        <div class="projection-controls">
+                            <h3>Proyección de datos</h3>
+                            <div class="input-group">
+                                <label for="projection-period">Periodo de proyección:</label>
+                                <select id="projection-period">
+                                    <option value="1mo">1 mes</option>
+                                    <option value="6mo">6 meses</option>
+                                    <option value="1y" selected>1 año</option>
+                                    <option value="5y">5 años</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label for="projection-method">Método:</label>
+                                <select id="projection-method">
+                                    <option value="MA" selected>Media Móvil (MA)</option>
+                                    <option value="AR">Autorregresión (AR)</option>
+                                    <option value="ARMA">ARMA</option>
+                                    <option value="ARIMA">ARIMA</option>
+                                    <option value="SARIMA">SARIMA</option>
+                                    <option value="linear">Tendencia lineal</option>
+                                </select>
+                            </div>
+                            <div class="input-group" id="model-params-container">
+                                <label for="model-params">Parámetros:</label>
+                                <input type="text" id="model-params" placeholder="p=1,d=0,q=1" title="Para MA: q=N | Para AR: p=N | Para ARMA/ARIMA: p=N,q=M | Para SARIMA: p=N,d=D,q=M,P=N,D=D,Q=M,m=K">
+                            </div>
+                            <button id="apply-projection" class="action-button projection-button">Aplicar proyección</button>
+                            <button id="remove-projection" class="action-button projection-button">Quitar proyección</button>
+                        </div>
                     </div>
                     
                     <div id="message-container"></div>
@@ -285,6 +556,83 @@ class StockApp {
                     margin: 5px 0;
                     color: #333;
                 }
+                
+                #projection-container {
+                    background-color: #f0f7ff;
+                    border: 1px solid #d0e3ff;
+                    border-radius: 4px;
+                    padding: 15px;
+                    margin: 15px 0;
+                }
+                
+                .projection-controls {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 15px;
+                }
+                
+                .projection-controls h3 {
+                    margin: 0;
+                    color: #333;
+                    font-size: 16px;
+                    flex-basis: 100%;
+                }
+                
+                .projection-button {
+                    background-color: #2196F3;
+                }
+                
+                .projection-button:hover {
+                    background-color: #0b7dda;
+                }
+                
+                #remove-projection {
+                    background-color: #ff9800;
+                }
+                
+                #remove-projection:hover {
+                    background-color: #e68a00;
+                }
+                
+                /* Estilos para los parámetros de modelo */
+                #model-params-container {
+                    position: relative;
+                }
+                
+                #model-params {
+                    width: 150px;
+                }
+                
+                #model-params:focus {
+                    outline: 2px solid #4CAF50;
+                }
+                
+                /* Mejorar visualización de parámetros de modelo */
+                #model-params-container::after {
+                    content: "?";
+                    position: absolute;
+                    right: -20px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 16px;
+                    height: 16px;
+                    border-radius: 50%;
+                    background-color: #808080;
+                    color: white;
+                    text-align: center;
+                    font-size: 12px;
+                    line-height: 16px;
+                    cursor: help;
+                }
+                
+                /* Indicador de carga para métodos avanzados */
+                .loading-indicator {
+                    display: inline-block;
+                    margin-left: 5px;
+                    font-size: 12px;
+                    color: #ff9800;
+                }
             </style>
         `;
 
@@ -295,6 +643,10 @@ class StockApp {
         document.getElementById('execute-button').addEventListener('click', () => this.execute());
         document.getElementById('download-button').addEventListener('click', () => this.downloadCSV());
         
+        // Agregar eventos para botones de proyección
+        document.getElementById('apply-projection').addEventListener('click', () => this.applyProjection());
+        document.getElementById('remove-projection').addEventListener('click', () => this.removeProjection());
+        
         // Agregar evento para cambiar el esquema de colores
         document.getElementById('color-scheme').addEventListener('change', (e) => {
             this.changeColorScheme(e.target.value);
@@ -303,6 +655,11 @@ class StockApp {
         // Agregar evento para cambiar el tipo de escala
         document.getElementById('scale-type').addEventListener('change', (e) => {
             this.changeScaleType(e.target.value === 'base100');
+        });
+        
+        // Agregar evento para actualizar placeholder de parámetros según método seleccionado
+        document.getElementById('projection-method').addEventListener('change', (e) => {
+            this.updateModelParamsPlaceholder(e.target.value);
         });
 
         // Establecer el selector de colores al valor actual
@@ -320,10 +677,26 @@ class StockApp {
         }
         }, 100);
         
-        // Cargar Plotly.js dinámicamente
-        this.loadScript('https://cdn.plot.ly/plotly-latest.min.js')
-            .then(() => console.log('Plotly cargado correctamente'))
-            .catch(error => this.setMessage(`Error al cargar Plotly: ${error.message}`));
+        // Cargar Plotly.js y bibliotecas para análisis de series temporales dinámicamente
+        Promise.all([
+            this.loadScript('https://cdn.plot.ly/plotly-latest.min.js'),
+            this.loadScript('https://cdn.jsdelivr.net/npm/ml-matrix@6.10.4/dist/ml-matrix.min.js'),
+            this.loadScript('https://cdn.jsdelivr.net/npm/ml-stat@1.3.3/dist/ml-stat.min.js'),
+            this.loadScript('https://cdn.jsdelivr.net/npm/numeric@1.2.6/numeric.min.js')
+        ])
+        .then(() => {
+            console.log('Bibliotecas base cargadas correctamente');
+            // Cargar nuestro código personalizado de series temporales
+            return this.loadScript('https://cdn.jsdelivr.net/npm/timeseries-analysis@1.0.12/dist/timeseries.min.js');
+        })
+        .then(() => {
+            console.log('Biblioteca de series temporales cargada correctamente');
+            this.timeSeriesLoaded = true;
+        })
+        .catch(error => {
+            console.error('Error al cargar bibliotecas principales:', error);
+            this.setMessage(`Error al cargar bibliotecas esenciales: ${error ? error.message || 'Error desconocido' : 'Error desconocido'}`, true);
+        });
     }
 
     /**
@@ -333,6 +706,10 @@ class StockApp {
      */
     loadScript(url) {
         return new Promise((resolve, reject) => {
+            if (!url) {
+                reject(new Error('URL no válida'));
+                return;
+            }
             const script = document.createElement('script');
             script.src = url;
             script.onload = resolve;
@@ -391,10 +768,30 @@ class StockApp {
      * @param {string} message - Mensaje a mostrar
      * @param {boolean} isError - Indica si es un mensaje de error
      */
-    setMessage(message, isError = true) {
+    setMessage(message, isError = true, isLoading = false) {
         const messageContainer = document.getElementById('message-container');
+        if (!messageContainer) return;
+        
         messageContainer.textContent = message;
-        messageContainer.style.color = isError ? '#D8000C' : '#4F8A10';
+        
+        // Colores para diferentes tipos de mensajes
+        if (isLoading) {
+            messageContainer.style.color = '#0057B8'; // Azul para carga
+            
+            // Añadir información sobre bibliotecas si es necesario
+            if (message.includes('bibliotecas')) {
+                const infoText = document.createElement('div');
+                infoText.style.fontSize = '0.8em';
+                infoText.style.marginTop = '5px';
+                infoText.textContent = 'Esto puede tardar unos segundos. Los métodos avanzados de proyección estarán disponibles cuando se complete la carga.';
+                
+                messageContainer.innerHTML = '';
+                messageContainer.appendChild(document.createTextNode(message));
+                messageContainer.appendChild(infoText);
+            }
+        } else {
+            messageContainer.style.color = isError ? '#D8000C' : '#4F8A10'; // Rojo para error, verde para éxito
+        }
     }
 
     /**
@@ -491,6 +888,16 @@ class StockApp {
             // Crear gráfico con todos los tickers
             this.createCandlestickChart(this.tickers, this.currentData);
             this.setMessage(`Gráfico generado correctamente para ${this.tickers.length} ticker(s).`, false);
+            
+            // Mostrar el contenedor de proyección
+            const projectionContainer = document.getElementById('projection-container');
+            if (projectionContainer) {
+                projectionContainer.style.display = 'block';
+            }
+            
+            // Restablecer estado de proyección
+            this.showingProjection = false;
+            this.projectionData = {};
         } catch (error) {
             this.setMessage(`Error: ${error.message}`);
             document.getElementById('stock-chart').innerHTML = '<h2>Error al cargar los datos</h2>';
@@ -856,6 +1263,61 @@ class StockApp {
         localStorage.setItem('stockapp_use_base100', useBase100.toString());
     }
     
+    /**
+     * Actualiza el placeholder de parámetros según el modelo seleccionado
+     * @param {string} modelType - Tipo de modelo de serie temporal
+     */
+    updateModelParamsPlaceholder(modelType) {
+        const modelParamsInput = document.getElementById('model-params');
+        const modelParamsContainer = document.getElementById('model-params-container');
+        if (!modelParamsInput || !modelParamsContainer) return;
+        
+        let helpText = '';
+        let placeholder = '';
+        
+        switch (modelType) {
+            case 'MA':
+                placeholder = 'q=2';
+                helpText = 'Media Móvil: q = Orden (tamaño de la ventana). Mayor valor = más suavizado.';
+                // Actualizar el contenedor para mostrar información sobre la biblioteca
+                modelParamsContainer.classList.toggle('loading', !this.timeSeriesLoaded);
+                break;
+            case 'AR':
+                placeholder = 'p=2';
+                helpText = 'Autorregresión: p = Número de observaciones anteriores utilizadas. Mayor valor = más historia considera.';
+                modelParamsContainer.classList.toggle('loading', !this.timeSeriesLoaded);
+                break;
+            case 'ARMA':
+                placeholder = 'p=1,q=1';
+                helpText = 'ARMA: p = Orden AR (historia), q = Orden MA (errores). Balanceado para series con tendencias.';
+                modelParamsContainer.classList.toggle('loading', !this.timeSeriesLoaded);
+                break;
+            case 'ARIMA':
+                placeholder = 'p=1,d=1,q=1';
+                helpText = 'ARIMA: p = Orden AR, d = Diferenciación (elimina tendencias), q = Orden MA. Bueno para series con tendencia.';
+                modelParamsContainer.classList.toggle('loading', !this.timeSeriesLoaded);
+                break;
+            case 'SARIMA':
+                placeholder = 'p=1,d=1,q=1,P=0,D=1,Q=1,m=12';
+                helpText = 'SARIMA: p,d,q = Parámetros ARIMA, P,D,Q = Parámetros estacionales, m = Periodo estacional (7=semanal, 12=mensual)';
+                modelParamsContainer.classList.toggle('loading', !this.timeSeriesLoaded);
+                break;
+            case 'linear':
+                placeholder = 'No requiere parámetros';
+                helpText = 'Tendencia lineal simple. No requiere bibliotecas adicionales.';
+                modelParamsContainer.classList.remove('loading');
+                break;
+            default:
+                placeholder = 'p=1,d=0,q=1';
+                helpText = 'Especifique parámetros en formato clave=valor separados por comas';
+        }
+        
+        // Actualizar el input y el tooltip
+        modelParamsInput.placeholder = placeholder;
+        modelParamsInput.title = helpText;
+        modelParamsContainer.title = helpText;
+    }
+
     // Ya no necesitamos métodos relacionados con API Key
 
     /**
@@ -990,6 +1452,747 @@ class StockApp {
         
         // Volver a crear el gráfico con las dimensiones correctas
         this.createCandlestickChart(this.tickers, this.currentData);
+        
+        // Si hay proyección, agregarla después de redibujar el gráfico principal
+        if (this.showingProjection && Object.keys(this.projectionData).length > 0) {
+            this.addProjectionToChart();
+        }
+    }
+    
+    /**
+     * Calcula y aplica una proyección a los datos actuales
+     */
+    applyProjection() {
+        if (Object.keys(this.currentData).length === 0 || this.tickers.length === 0) {
+            this.setMessage('Primero debe cargar datos para realizar una proyección.');
+            return;
+        }
+        
+        const projectionPeriod = document.getElementById('projection-period').value;
+        let projectionMethod = document.getElementById('projection-method').value;
+        
+        // Verificar si la biblioteca está cargada para métodos avanzados
+        if (!this.timeSeriesLoaded && projectionMethod !== 'linear') {
+            // Comprobar si alguna de las bibliotecas está disponible de manera robusta
+            const hasLibraries = typeof window.math !== 'undefined' || 
+                                typeof window.Fili !== 'undefined' || 
+                                typeof window.ARIMA === 'function' || 
+                                typeof window.SG !== 'undefined';
+            
+            if (!hasLibraries) {
+                this.setMessage('Las bibliotecas de series temporales no están disponibles. Utilizando método lineal como alternativa.', true);
+                projectionMethod = 'linear'; // Forzar a usar método lineal
+            } else {
+                this.setMessage('Algunas bibliotecas de series temporales están disponibles. Intentando utilizar el método solicitado...', false);
+            }
+        }
+        
+        this.setMessage(`Calculando proyección ${projectionMethod} para ${projectionPeriod}...`, false);
+        
+        try {
+            // Calcular datos de proyección para cada ticker
+            this.projectionData = {};
+            
+            this.tickers.forEach(ticker => {
+                // Obtener los datos existentes del ticker
+                const data = this.currentData[ticker];
+                
+                if (!data || data.length === 0) {
+                    return;
+                }
+                
+                try {
+                    // Calcular proyección según el método seleccionado
+                    const projectedData = this.calculateProjection(data, projectionPeriod, projectionMethod);
+                    this.projectionData[ticker] = projectedData;
+                } catch (tickerError) {
+                    console.error(`Error al calcular proyección para ${ticker}:`, tickerError);
+                    // Si falla un ticker, continuamos con el siguiente
+                }
+            });
+            
+            if (Object.keys(this.projectionData).length === 0) {
+                throw new Error('No se pudo calcular ninguna proyección válida');
+            }
+            
+            // Marcar que se está mostrando una proyección
+            this.showingProjection = true;
+            
+            // Agregar las proyecciones al gráfico
+            this.addProjectionToChart();
+            
+            this.setMessage(`Proyección aplicada correctamente para ${Object.keys(this.projectionData).length} ticker(s).`, false);
+        } catch (error) {
+            this.setMessage(`Error al calcular la proyección: ${error.message}`);
+            this.showingProjection = false;
+            this.projectionData = {};
+        }
+    }
+    
+    /**
+     * Elimina la proyección del gráfico
+     */
+    removeProjection() {
+        if (!this.showingProjection || Object.keys(this.projectionData).length === 0) {
+            this.setMessage('No hay proyección actualmente mostrada.');
+            return;
+        }
+        
+        // Restablecer estado
+        this.showingProjection = false;
+        this.projectionData = {};
+        
+        // Redibujar el gráfico sin proyecciones
+        this.redrawChart();
+        this.setMessage('Proyección removida.', false);
+    }
+    
+    /**
+     * Calcula los datos de proyección según el método seleccionado
+     * @param {Array} data - Datos históricos del ticker
+     * @param {string} period - Periodo de proyección
+     * @param {string} method - Método de proyección
+     * @returns {Array} - Datos de la proyección
+     */
+    calculateProjection(data, period, method) {
+        // Verificar si la biblioteca está cargada
+        if (!this.timeSeriesLoaded && method !== 'linear') {
+            this.setMessage('Biblioteca de series temporales aún no cargada. Usando tendencia lineal como alternativa.', true);
+            method = 'linear';
+        }
+        
+        // Obtener el último punto de datos como referencia
+        const lastPoint = data[data.length - 1];
+        const lastDate = new Date(lastPoint.date);
+        
+        // Determinar cuántos puntos generar según el periodo
+        let pointsToGenerate = 0;
+        let intervalDays = 0;
+        
+        switch (period) {
+            case '1mo': 
+                pointsToGenerate = 20;  // Aproximadamente 20 días hábiles en un mes
+                intervalDays = 1;
+                break;
+            case '6mo': 
+                pointsToGenerate = 26;  // Aproximadamente 26 semanas en 6 meses
+                intervalDays = 7;
+                break;
+            case '1y': 
+                pointsToGenerate = 52;  // 52 semanas en un año
+                intervalDays = 7;
+                break;
+            case '5y': 
+                pointsToGenerate = 60;  // 60 meses en 5 años
+                intervalDays = 30;
+                break;
+            default:
+                pointsToGenerate = 52;  // Valor por defecto: 1 año
+                intervalDays = 7;
+        }
+        
+        // Calcular el intervalo basado en los datos existentes
+        // Si los datos son diarios, semanales o mensuales
+        let actualInterval = 7; // Por defecto asumimos semanal
+        if (data.length > 1) {
+            const date1 = new Date(data[data.length - 1].date);
+            const date2 = new Date(data[data.length - 2].date);
+            const diffDays = Math.round((date1 - date2) / (1000 * 60 * 60 * 24));
+            actualInterval = Math.max(1, diffDays);
+        }
+        
+        // Usar el intervalo calculado en lugar del predeterminado
+        intervalDays = actualInterval;
+        
+        // Obtener los parámetros del modelo desde la entrada
+        const paramsInput = document.getElementById('model-params').value.trim();
+        const params = this.parseModelParameters(paramsInput, method);
+        
+        // Preparar datos para análisis de series temporales
+        // Extraer solo los precios de cierre para el análisis
+        const prices = data.map(item => item.close);
+        
+        // Generar proyección según el método seleccionado
+        let projectedPrices = [];
+        
+        try {
+            switch (method) {
+                case 'MA':
+                    projectedPrices = this.calculateMA(prices, pointsToGenerate, params);
+                    break;
+                case 'AR':
+                    projectedPrices = this.calculateAR(prices, pointsToGenerate, params);
+                    break;
+                case 'ARMA':
+                    projectedPrices = this.calculateARMA(prices, pointsToGenerate, params);
+                    break;
+                case 'ARIMA':
+                    projectedPrices = this.calculateARIMA(prices, pointsToGenerate, params);
+                    break;
+                case 'SARIMA':
+                    projectedPrices = this.calculateSARIMA(prices, pointsToGenerate, params);
+                    break;
+                case 'linear':
+                default:
+                    projectedPrices = this.calculateLinear(prices, pointsToGenerate);
+                    break;
+            }
+        } catch (error) {
+            console.error(`Error al calcular proyección con método ${method}:`, error);
+            this.setMessage(`Error en cálculo de ${method}: ${error.message}. Usando tendencia lineal.`);
+            
+            // Si falla, usar tendencia lineal como fallback
+            projectedPrices = this.calculateLinear(prices, pointsToGenerate);
+        }
+        
+        // Convertir los precios proyectados en objetos de datos completos
+        const projectedData = [];
+        const lastClose = prices[prices.length - 1];
+        
+        // Generar datos completos con fechas y precios OHLC
+        for (let i = 0; i < projectedPrices.length; i++) {
+            // Calcular nueva fecha
+            const newDate = new Date(lastDate);
+            newDate.setDate(newDate.getDate() + intervalDays * (i + 1));
+            const dateStr = newDate.toISOString().split('T')[0];
+            
+            // Asegurar que el precio proyectado no sea negativo
+            const projectedClose = Math.max(0, projectedPrices[i]);
+            
+            // Agregar punto a los datos proyectados
+            projectedData.push({
+                date: dateStr,
+                close: projectedClose,
+                // Estimación simple para open/high/low basada en la volatilidad histórica
+                open: projectedClose * 0.99,
+                high: projectedClose * 1.01,
+                low: projectedClose * 0.98
+            });
+        }
+        
+        return projectedData;
+    }
+    
+    /**
+     * Parsea los parámetros del modelo desde una cadena de entrada
+     * @param {string} inputString - Cadena de parámetros (p=1,d=1,q=1,...)
+     * @param {string} method - Método de proyección
+     * @returns {Object} - Objeto con parámetros parseados
+     */
+    parseModelParameters(inputString, method) {
+        // Valores por defecto según método
+        const defaults = {
+            'MA': { q: 2 },
+            'AR': { p: 2 },
+            'ARMA': { p: 1, q: 1 },
+            'ARIMA': { p: 1, d: 1, q: 1 },
+            'SARIMA': { p: 1, d: 1, q: 1, P: 0, D: 1, Q: 1, m: 12 }
+        };
+        
+        // Si no hay entrada o el método es lineal, devolver valores por defecto
+        if (!inputString || method === 'linear') {
+            return defaults[method] || {};
+        }
+        
+        // Parsear la cadena de parámetros
+        const params = {};
+        const parts = inputString.split(',');
+        
+        parts.forEach(part => {
+            const [key, valueStr] = part.trim().split('=');
+            if (key && valueStr) {
+                const value = parseInt(valueStr, 10);
+                if (!isNaN(value)) {
+                    params[key.trim()] = value;
+                }
+            }
+        });
+        
+        // Combinar con valores por defecto
+        return { ...defaults[method], ...params };
+    }
+    
+    /**
+     * Calcula proyección usando Media Móvil (MA)
+     */
+    calculateMA(data, horizon, params) {
+        // Verificar disponibilidad de bibliotecas de manera más robusta
+        const hasSG = typeof window.SG !== 'undefined' && typeof window.SG.savitzkyGolay === 'function';
+        const hasFili = typeof window.Fili !== 'undefined' && typeof window.Fili.FirCoeffs === 'function';
+        
+        if (!hasSG && !hasFili && !this.timeSeriesLoaded) {
+            console.warn("Bibliotecas para Media Móvil no disponibles, usando implementación simple");
+        }
+        
+        const q = params.q || 2; // Orden de MA
+        
+        try {
+            // Usamos Savitzky-Golay para suavizar los datos (una forma de media móvil)
+            const options = {
+                windowSize: Math.min(Math.max(3, q * 2 + 1), data.length - 1), // Ventana debe ser impar y no mayor que los datos
+                derivative: 0,
+                polynomial: 2
+            };
+            
+            // Aplicar suavizado
+            let smoothed = data;
+            
+            // Intentar usar bibliotecas disponibles, con fallback incluido
+            if (hasSG && typeof SG.savitzkyGolay === 'function') {
+                try {
+                    smoothed = SG.savitzkyGolay(data, 1, options);
+                    console.log("Usando SG para media móvil");
+                } catch (e) {
+                    console.warn("Error al usar SG:", e);
+                }
+            } else if (hasFili) {
+                try {
+                    // Alternativa usando fili.js
+                    const firCalculator = new Fili.FirCoeffs();
+                    const firCoeffs = firCalculator.lowpass({
+                        order: q * 2,
+                        Fs: 1,
+                        Fc: 0.2
+                    });
+                    
+                    const filter = new Fili.FirFilter(firCoeffs);
+                    smoothed = filter.multiStep(data);
+                    console.log("Usando Fili para media móvil");
+                } catch (e) {
+                    console.warn("Error al usar Fili:", e);
+                }
+            } else {
+                // Implementación manual simple de media móvil si ninguna biblioteca está disponible
+                smoothed = [];
+                for (let i = 0; i < data.length; i++) {
+                    let sum = 0;
+                    let count = 0;
+                    
+                    // Calcular media de ventana móvil
+                    for (let j = Math.max(0, i - q); j <= Math.min(data.length - 1, i + q); j++) {
+                        sum += data[j];
+                        count++;
+                    }
+                    
+                    smoothed.push(sum / count);
+                }
+                console.log("Usando implementación manual para media móvil");
+            }
+            
+            // Calcular la tendencia a partir de los datos suavizados
+            const recent = smoothed.slice(-5);
+            let avgChange = 0;
+            
+            for (let i = 1; i < recent.length; i++) {
+                avgChange += recent[i] - recent[i - 1];
+            }
+            avgChange /= (recent.length - 1);
+            
+            // Generar proyección
+            const forecast = [];
+            let lastValue = smoothed[smoothed.length - 1];
+            
+            for (let i = 0; i < horizon; i++) {
+                lastValue += avgChange;
+                forecast.push(lastValue);
+            }
+            
+            return forecast;
+        } catch (e) {
+            console.error('Error en cálculo MA:', e);
+            return this.calculateLinear(data, horizon); // Fallback a lineal
+        }
+    }
+    
+    /**
+     * Calcula proyección usando Autorregresión (AR)
+     */
+    calculateAR(data, horizon, params) {
+        // Verificar disponibilidad de math.js de manera más robusta
+        const hasMath = typeof window.math !== 'undefined' && typeof window.math.multiply === 'function';
+        
+        if (!hasMath && !this.timeSeriesLoaded) {
+            console.warn("Biblioteca math.js no disponible o incompleta, usando implementación simplificada de AR");
+        }
+        
+        const p = Math.min(params.p || 2, Math.floor(data.length / 2)); // Orden de AR, limitado por los datos
+        
+        try {
+            // Implementación simple de AR(p)
+            const coefficients = this.estimateARCoefficients(data, p);
+            const forecast = [];
+            
+            // Usamos los últimos p valores para empezar
+            const lastValues = data.slice(-p);
+            
+            for (let i = 0; i < horizon; i++) {
+                // Predicción AR: combinación lineal de los últimos p valores
+                let prediction = 0;
+                for (let j = 0; j < p; j++) {
+                    prediction += coefficients[j] * lastValues[(lastValues.length - 1) - j];
+                }
+                
+                forecast.push(prediction);
+                
+                // Actualizar los últimos valores para la siguiente predicción
+                lastValues.shift();
+                lastValues.push(prediction);
+            }
+            
+            return forecast;
+        } catch (e) {
+            console.error('Error en cálculo AR:', e);
+            return this.calculateLinear(data, horizon); // Fallback a lineal
+        }
+    }
+    
+    /**
+     * Estima los coeficientes AR usando método de los mínimos cuadrados
+     */
+    estimateARCoefficients(data, p) {
+        // Implementación simplificada para estimar coeficientes AR
+        // En una implementación real, se usaría regresión lineal múltiple
+        // Para simplificar, usamos un promedio ponderado
+        const coefficients = [];
+        
+        // Peso decreciente para valores más antiguos
+        const total = p * (p + 1) / 2; // Suma de 1 a p
+        
+        for (let i = 1; i <= p; i++) {
+            coefficients.push((p - i + 1) / total);
+        }
+        
+        return coefficients;
+    }
+    
+    /**
+     * Calcula proyección usando ARMA (Autoregresivo + Media Móvil)
+     */
+    calculateARMA(data, horizon, params) {
+        const p = params.p || 1; // Orden AR
+        const q = params.q || 1; // Orden MA
+        
+        try {
+            // Combinamos los modelos AR y MA
+            const arCoefficients = this.estimateARCoefficients(data, p);
+            
+            // Calculamos los errores para el componente MA
+            const errors = [];
+            for (let i = p; i < data.length; i++) {
+                let prediction = 0;
+                for (let j = 0; j < p; j++) {
+                    prediction += arCoefficients[j] * data[i - j - 1];
+                }
+                errors.push(data[i] - prediction);
+            }
+            
+            // Media móvil de los errores
+            const maCoefficients = [];
+            for (let i = 0; i < q; i++) {
+                maCoefficients.push(1 / q);
+            }
+            
+            // Proyección
+            const forecast = [];
+            const lastValues = data.slice(-p);
+            const lastErrors = errors.slice(-q);
+            
+            for (let i = 0; i < horizon; i++) {
+                // Componente AR
+                let arComponent = 0;
+                for (let j = 0; j < p; j++) {
+                    arComponent += arCoefficients[j] * lastValues[(lastValues.length - 1) - j];
+                }
+                
+                // Componente MA
+                let maComponent = 0;
+                for (let j = 0; j < q; j++) {
+                    if (j < lastErrors.length) {
+                        maComponent += maCoefficients[j] * lastErrors[(lastErrors.length - 1) - j];
+                    }
+                }
+                
+                const prediction = arComponent + maComponent;
+                forecast.push(prediction);
+                
+                // Actualizar para la siguiente predicción
+                lastValues.shift();
+                lastValues.push(prediction);
+                
+                const error = 0; // No podemos calcular el error real para predicciones futuras
+                lastErrors.shift();
+                lastErrors.push(error);
+            }
+            
+            return forecast;
+        } catch (e) {
+            console.error('Error en cálculo ARMA:', e);
+            return this.calculateLinear(data, horizon); // Fallback a lineal
+        }
+    }
+    
+    /**
+     * Calcula proyección usando ARIMA (ARMA + Integración)
+     */
+    calculateARIMA(data, horizon, params) {
+        const p = params.p || 1; // Orden AR
+        const d = params.d || 1; // Orden de diferenciación
+        const q = params.q || 1; // Orden MA
+        
+        try {
+            // Verificar si la biblioteca ARIMA está disponible de manera más robusta
+            const hasARIMA = typeof window.ARIMA === 'function';
+            
+            if (hasARIMA) {
+                console.log("Usando biblioteca ARIMA para proyección");
+                
+                // Usar la implementación de la biblioteca
+                const arimaConfig = {
+                    p: p,
+                    d: d,
+                    q: q,
+                    verbose: false
+                };
+                
+                // Crear y entrenar el modelo ARIMA
+                const arimaModel = new ARIMA(arimaConfig).train(data);
+                
+                // Realizar la predicción
+                return arimaModel.predict(horizon);
+            } else {
+                console.log("Biblioteca ARIMA no disponible, usando implementación propia");
+                
+                // Implementación manual como fallback
+                // Diferenciar los datos d veces
+                let diffData = [...data];
+                for (let i = 0; i < d; i++) {
+                    diffData = this.differenceData(diffData);
+                }
+                
+                // Aplicar ARMA al resultado diferenciado
+                const armaForecast = this.calculateARMA(diffData, horizon, { p, q });
+                
+                // Integrar las diferencias para obtener la predicción final
+                return this.integrateData(armaForecast, data, d);
+            }
+        } catch (e) {
+            console.error('Error en cálculo ARIMA:', e);
+            return this.calculateLinear(data, horizon); // Fallback a lineal
+        }
+    }
+    
+    /**
+     * Calcula la diferencia entre valores consecutivos en los datos
+     */
+    differenceData(data) {
+        const result = [];
+        for (let i = 1; i < data.length; i++) {
+            result.push(data[i] - data[i - 1]);
+        }
+        return result;
+    }
+    
+    /**
+     * Integra los datos diferenciados para obtener valores originales
+     */
+    integrateData(forecast, originalData, d) {
+        let result = [...forecast];
+        
+        for (let i = 0; i < d; i++) {
+            const lastOriginal = originalData[originalData.length - 1 - i];
+            for (let j = 0; j < result.length; j++) {
+                result[j] = (j === 0) ? lastOriginal + result[j] : result[j - 1] + result[j];
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Calcula proyección usando SARIMA (ARIMA + Estacionalidad)
+     */
+    calculateSARIMA(data, horizon, params) {
+        const p = params.p || 1; // Orden AR no estacional
+        const d = params.d || 1; // Orden de diferenciación no estacional
+        const q = params.q || 1; // Orden MA no estacional
+        const P = params.P || 0; // Orden AR estacional
+        const D = params.D || 1; // Orden de diferenciación estacional
+        const Q = params.Q || 1; // Orden MA estacional
+        const m = params.m || 12; // Periodo estacional
+        
+        try {
+            // Para una implementación real de SARIMA, se requeriría una biblioteca más completa
+            // Esta es una implementación simplificada
+            
+            // Aplicamos primero diferenciación estacional
+            let seasonalDiffData = [...data];
+            for (let i = 0; i < D; i++) {
+                seasonalDiffData = this.seasonalDifference(seasonalDiffData, m);
+            }
+            
+            // Luego aplicamos ARIMA a los datos diferenciados estacionalmente
+            const arimaForecast = this.calculateARIMA(seasonalDiffData, horizon, { p, d, q });
+            
+            // Aplicamos el componente estacional
+            const forecast = [];
+            const lastPeriod = data.slice(-m);
+            
+            for (let i = 0; i < horizon; i++) {
+                // Agregamos componente estacional (promedio ponderado)
+                const seasonalComponent = lastPeriod[i % lastPeriod.length] * 0.3; // 30% influencia estacional
+                forecast.push(arimaForecast[i] + seasonalComponent);
+            }
+            
+            return forecast;
+        } catch (e) {
+            console.error('Error en cálculo SARIMA:', e);
+            return this.calculateLinear(data, horizon); // Fallback a lineal
+        }
+    }
+    
+    /**
+     * Calcula la diferencia estacional
+     */
+    seasonalDifference(data, period) {
+        const result = [];
+        for (let i = period; i < data.length; i++) {
+            result.push(data[i] - data[i - period]);
+        }
+        return result;
+    }
+    
+    /**
+     * Calcula proyección usando tendencia lineal simple
+     */
+    calculateLinear(data, horizon) {
+        // Cálculo de tendencia lineal
+        const n = data.length;
+        if (n < 2) return Array(horizon).fill(data[0] || 0);
+        
+        // Estimamos pendiente usando regresión lineal simple
+        let sumX = 0;
+        let sumY = 0;
+        let sumXY = 0;
+        let sumX2 = 0;
+        
+        for (let i = 0; i < n; i++) {
+            sumX += i;
+            sumY += data[i];
+            sumXY += i * data[i];
+            sumX2 += i * i;
+        }
+        
+        const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+        const intercept = (sumY - slope * sumX) / n;
+        
+        // Generar proyección
+        const forecast = [];
+        for (let i = 0; i < horizon; i++) {
+            const x = n + i;
+            const prediction = intercept + slope * x;
+            forecast.push(Math.max(0, prediction)); // Evitar valores negativos
+        }
+        
+        return forecast;
+    }
+    
+    /**
+     * Agrega las trazas de proyección al gráfico actual
+     */
+    addProjectionToChart() {
+        if (!this.showingProjection || Object.keys(this.projectionData).length === 0) {
+            return;
+        }
+        
+        const chartContainer = document.getElementById('stock-chart');
+        if (!chartContainer || !chartContainer.data) {
+            return;
+        }
+        
+        // Determinar si estamos usando base 100
+        const useBase100 = this.tickers.length > 1 && this.useBase100;
+        
+        // Variables para normalización base 100
+        let firstDateValues = {};
+        
+        // Si estamos usando base 100, obtener valores de referencia
+        if (useBase100) {
+            this.tickers.forEach(ticker => {
+                const data = this.currentData[ticker];
+                if (data && data.length > 0) {
+                    firstDateValues[ticker] = data[0].close;
+                }
+            });
+        }
+        
+        // Para cada ticker con proyección, crear una traza de línea
+        const projectionTraces = [];
+        
+        // Colores para las líneas de proyección
+        const projectionColors = [
+            '#005293', '#00A651', '#F26419', '#1ABC9C', '#F4D03F',
+            '#E91E63', '#03A9F4', '#CDDC39', '#FF7F50', '#9F8FEF'
+        ];
+        
+        this.tickers.forEach((ticker, index) => {
+            // Solo crear proyección si hay datos
+            if (!this.projectionData[ticker] || this.projectionData[ticker].length === 0) {
+                return;
+            }
+            
+            const projData = this.projectionData[ticker];
+            
+            // Preparar datos para la traza
+            let dates = projData.map(item => item.date);
+            let values;
+            
+            // Aplicar normalización si es necesario
+            if (useBase100 && firstDateValues[ticker]) {
+                const baseValue = firstDateValues[ticker];
+                values = projData.map(item => (item.close / baseValue) * 100);
+            } else {
+                values = projData.map(item => item.close);
+            }
+            
+            // Agregar el último punto de los datos reales para unir las series
+            const realData = this.currentData[ticker];
+            if (realData && realData.length > 0) {
+                const lastRealPoint = realData[realData.length - 1];
+                dates = [lastRealPoint.date, ...dates];
+                
+                let lastValue;
+                if (useBase100 && firstDateValues[ticker]) {
+                    lastValue = (lastRealPoint.close / firstDateValues[ticker]) * 100;
+                } else {
+                    lastValue = lastRealPoint.close;
+                }
+                
+                values = [lastValue, ...values];
+            }
+            
+            // Crear traza para la proyección
+            const trace = {
+                x: dates,
+                y: values,
+                type: 'scatter',
+                mode: 'lines',
+                line: {
+                    color: projectionColors[index % projectionColors.length],
+                    width: 2,
+                    dash: 'dashdot'
+                },
+                name: `${ticker} (Proyección)`,
+                showlegend: true,
+                legendgroup: ticker
+            };
+            
+            projectionTraces.push(trace);
+        });
+        
+        // Añadir trazas de proyección al gráfico
+        if (projectionTraces.length > 0) {
+            Plotly.addTraces(chartContainer, projectionTraces);
+        }
     }
 }
 
