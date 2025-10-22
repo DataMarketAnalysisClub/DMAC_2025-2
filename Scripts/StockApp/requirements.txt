@@ -1,0 +1,9 @@
+pandas
+yfinance
+plotly
+statsmodels
+pmdarima
+PyQt5
+PyQtWebEngine
+numpy
+scikit-learn
