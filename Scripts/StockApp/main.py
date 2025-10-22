@@ -4,15 +4,15 @@ import warnings
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtCore import Qt
 
-# Ignorar advertencias de statsmodels
 warnings.filterwarnings('ignore')
 
-# Importar nuestros módulos separados
 from ui_setup import setup_ui
-from data_logic import fetch_stock_data, export_to_csv
-from analysis_logic import run_arima_forecast, get_model_quality
+from data_logic import export_to_csv
+from analysis_logic import get_model_quality
 from plotting import generate_stock_chart
 from config import COLOR_SCHEMES, TICKER_COLOR_PAIRS, CONFIDENCE_COLORS
+from worker_threads import DataFetchWorker, PredictionWorker
+from memory_management import DataManager
 
 class MultiStockApp(QWidget):
     def __init__(self):
@@ -26,16 +26,17 @@ class MultiStockApp(QWidget):
         self.use_base100 = True
         self.predictions = {}
         
+        # Workers
+        self.data_worker = None
+        self.prediction_worker = None
+        
         # Configuración de colores
         self.color_schemes = COLOR_SCHEMES
         self.ticker_color_pairs = TICKER_COLOR_PAIRS
         self.confidence_colors = CONFIDENCE_COLORS
         self.current_color_scheme = 'UDD'
         
-        # Construir la UI desde el módulo ui_setup
         setup_ui(self)
-        
-        # Conectar señales
         self._connect_signals()
 
     def _connect_signals(self):
@@ -52,6 +53,21 @@ class MultiStockApp(QWidget):
         self.base100_checkbox.stateChanged.connect(self.toggle_base100)
         self.auto_arima_radio.toggled.connect(self.toggle_arima_mode)
         self.confidence_checkbox.stateChanged.connect(self.toggle_confidence_bands)
+
+    def _set_ui_enabled(self, enabled):
+        """Enable/disable UI controls during processing"""
+        self.btn.setEnabled(enabled)
+        self.btn_predict.setEnabled(enabled)
+        self.btn_download.setEnabled(enabled)
+        self.ticker_input.setEnabled(enabled)
+        self.period_input.setEnabled(enabled)
+        self.freq_input.setEnabled(enabled)
+        self.horizon_input.setEnabled(enabled)
+        self.auto_arima_radio.setEnabled(enabled)
+        self.manual_arima_radio.setEnabled(enabled)
+        self.p_input.setEnabled(enabled)
+        self.d_input.setEnabled(enabled)
+        self.q_input.setEnabled(enabled)
 
     # --- Funciones de Navegación y UI ---
 
@@ -106,22 +122,35 @@ class MultiStockApp(QWidget):
         if not tickers:
             self.set_message("Debe ingresar al menos un ticker.")
             return
-            
-        self.predictions = {} # Limpiar predicciones al cargar nuevos datos
         
+        # Limpiar predicciones previas
+        self.predictions = {}
+        
+        # Mostrar/ocultar controles de Base 100
         if len(tickers) > 1:
             self.base100_checkbox.show()
-            self.info_label.setText('<b>Base 100:</b> ...') # (texto omitido por brevedad)
+            self.info_label.setText('<b>Base 100:</b> Normaliza todos los tickers a un valor inicial de 100 para comparación.')
             self.info_label.show()
         else:
             self.base100_checkbox.hide()
             self.info_label.hide()
         
+        # Deshabilitar UI
+        self._set_ui_enabled(False)
         self.set_message(f'Cargando datos para {len(tickers)} ticker(s)...', False)
-        QApplication.processEvents()
         
-        # Llamar al módulo de lógica de datos
-        self.current_data, self.tickers, errors = fetch_stock_data(tickers, periodo, frecuencia)
+        # Crear y ejecutar worker
+        self.data_worker = DataFetchWorker(tickers, periodo, frecuencia)
+        self.data_worker.progress.connect(lambda msg: self.set_message(msg, False))
+        self.data_worker.finished.connect(self._on_data_loaded)
+        self.data_worker.start()
+
+    def _on_data_loaded(self, current_data, valid_tickers, errors):
+        """Callback cuando termina la descarga de datos"""
+        self._set_ui_enabled(True)
+        
+        self.current_data = current_data
+        self.tickers = valid_tickers
         
         if not self.current_data:
             self.set_message("No se obtuvieron datos para ningún ticker.")
@@ -131,43 +160,42 @@ class MultiStockApp(QWidget):
         self.create_chart()
         msg = f"Gráfico generado para {len(self.tickers)} ticker(s)."
         if errors:
-            msg += f" ({len(errors)} errores: {', '.join(errors[:2])}...)"
+            msg += f" ({len(errors)} errores)"
         self.set_message(msg, False)
 
     def generar_prediccion(self):
         if not self.current_data or not self.tickers:
             self.set_message("Primero debe cargar datos de tickers.")
             return
-            
+        
         horizon = int(self.horizon_input.currentText().split()[0])
         is_auto = self.auto_arima_radio.isChecked()
         manual_order = (self.p_input.value(), self.d_input.value(), self.q_input.value())
         freq_map = {'1d': 'D', '1wk': 'W', '1mo': 'M'}
         freq_str = freq_map.get(self.freq_input.currentText(), 'D')
+        
+        # Deshabilitar UI
+        self._set_ui_enabled(False)
+        self.set_message(f"Iniciando predicciones para {len(self.tickers)} ticker(s)...", False)
+        
+        # Crear y ejecutar worker
+        self.prediction_worker = PredictionWorker(
+            self.current_data, self.tickers, horizon, 
+            freq_str, is_auto, manual_order
+        )
+        self.prediction_worker.progress.connect(self._on_prediction_progress)
+        self.prediction_worker.finished.connect(self._on_predictions_ready)
+        self.prediction_worker.start()
 
-        self.set_message(f"Generando predicciones... Esto puede tomar minutos.", False)
-        QApplication.processEvents()
+    def _on_prediction_progress(self, message, current, total):
+        """Callback para actualizar progreso de predicciones"""
+        self.set_message(f"{message} ({current}/{total})", False)
+
+    def _on_predictions_ready(self, predictions, errors):
+        """Callback cuando terminan las predicciones"""
+        self._set_ui_enabled(True)
         
-        self.predictions = {}
-        errors = []
-        
-        for ticker in self.tickers:
-            self.set_message(f"Procesando {ticker}...", False)
-            QApplication.processEvents()
-            
-            # Llamar al módulo de lógica de análisis
-            pred_data, error = run_arima_forecast(
-                self.current_data[ticker], 
-                horizon, 
-                freq_str, 
-                is_auto, 
-                manual_order
-            )
-            
-            if error:
-                errors.append(f"{ticker}: {error}")
-            else:
-                self.predictions[ticker] = pred_data
+        self.predictions = predictions
         
         if self.predictions:
             self.create_chart()
@@ -180,22 +208,19 @@ class MultiStockApp(QWidget):
 
     def create_chart(self):
         self.set_message("Generando gráfico...", False)
-        QApplication.processEvents()
         
-        # Llamar al módulo de ploteo
         html_str = generate_stock_chart(
             self.current_data, self.tickers, self.predictions,
             self.color_schemes, self.ticker_color_pairs, self.confidence_colors,
             self.current_color_scheme, self.use_base100,
             self.confidence_checkbox.isChecked(),
-            get_model_quality # Pasamos la función como argumento
+            get_model_quality
         )
         
         self.webview.setHtml(html_str)
         self.set_message("Gráfico actualizado.", False)
     
     def descargar_csv(self):
-        # Llamar al módulo de lógica de datos
         filename, error = export_to_csv(
             self.current_data, 
             self.tickers, 
@@ -205,7 +230,17 @@ class MultiStockApp(QWidget):
         if error:
             self.set_message(error, is_error=True)
         else:
-            self.set_message(f"Datos guardados en '{filename}' (en su carpeta de Descargas).", is_error=False)
+            self.set_message(f"Datos guardados en '{filename}' (carpeta Descargas).", is_error=False)
+
+    def closeEvent(self, event):
+        """Cleanup workers on close"""
+        if self.data_worker and self.data_worker.isRunning():
+            self.data_worker.terminate()
+            self.data_worker.wait()
+        if self.prediction_worker and self.prediction_worker.isRunning():
+            self.prediction_worker.terminate()
+            self.prediction_worker.wait()
+        event.accept()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
