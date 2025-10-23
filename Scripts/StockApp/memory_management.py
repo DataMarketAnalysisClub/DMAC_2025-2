@@ -4,7 +4,38 @@ Prevents memory leaks by properly cleaning up data and cached objects.
 """
 import gc
 import pandas as pd
+import base64
+import os
 from weakref import WeakValueDictionary
+
+def get_image_base64(image_filename):
+    """
+    Convert image to base64 for embedding in Plotly charts.
+    Returns base64 string or None if image not found.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    image_path = os.path.join(script_dir, 'images', image_filename)
+    
+    if not os.path.exists(image_path):
+        print(f"Warning: Image not found at {image_path}")
+        return None
+    
+    try:
+        with open(image_path, 'rb') as f:
+            encoded = base64.b64encode(f.read()).decode('utf-8')
+            # Detect image format from extension
+            ext = os.path.splitext(image_filename)[1].lower()
+            mime_type = {
+                '.png': 'image/png',
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.svg': 'image/svg+xml'
+            }.get(ext, 'image/png')
+            
+            return f"data:{mime_type};base64,{encoded}"
+    except Exception as e:
+        print(f"Error encoding image: {e}")
+        return None
 
 class DataManager:
     """

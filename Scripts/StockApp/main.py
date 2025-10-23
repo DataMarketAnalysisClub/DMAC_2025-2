@@ -4,15 +4,17 @@ import warnings
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtCore import Qt
 
+# Ignorar advertencias de statsmodels
 warnings.filterwarnings('ignore')
 
+# Importar nuestros módulos separados
 from ui_setup import setup_ui
 from data_logic import export_to_csv
 from analysis_logic import get_model_quality
 from plotting import generate_stock_chart
 from config import COLOR_SCHEMES, TICKER_COLOR_PAIRS, CONFIDENCE_COLORS
 from worker_threads import DataFetchWorker, PredictionWorker
-from memory_management import DataManager
+from memory_management import DataManager, get_image_base64
 
 class MultiStockApp(QWidget):
     def __init__(self):
@@ -21,10 +23,9 @@ class MultiStockApp(QWidget):
         self.setGeometry(100, 100, 1200, 800)
         
         # Estado de la aplicación
-        self.current_data = {}
+        self.data_manager = DataManager(max_tickers=10)
         self.tickers = []
         self.use_base100 = True
-        self.predictions = {}
         
         # Workers
         self.data_worker = None
@@ -36,7 +37,13 @@ class MultiStockApp(QWidget):
         self.confidence_colors = CONFIDENCE_COLORS
         self.current_color_scheme = 'UDD'
         
+        # Load background image once
+        self.background_image = get_image_base64('DMAC.png')
+        
+        # Construir la UI desde el módulo ui_setup
         setup_ui(self)
+        
+        # Conectar señales
         self._connect_signals()
 
     def _connect_signals(self):
@@ -86,7 +93,7 @@ class MultiStockApp(QWidget):
     
     def toggle_base100(self, state):
         self.use_base100 = (state == Qt.Checked)
-        if self.current_data and len(self.tickers) > 1:
+        if self.data_manager.current_data and len(self.tickers) > 1:
             self.create_chart()
             scale_type = 'Base 100' if self.use_base100 else 'Valores absolutos'
             self.set_message(f'Escala cambiada a {scale_type}', False)
@@ -101,12 +108,12 @@ class MultiStockApp(QWidget):
         self.q_input.setVisible(is_manual)
     
     def toggle_confidence_bands(self):
-        if self.predictions:
+        if self.data_manager.predictions:
             self.create_chart()
     
     def change_color_scheme(self, scheme_name):
         self.current_color_scheme = 'UDD' if scheme_name == 'Colores Club' else 'default'
-        if self.current_data and self.tickers:
+        if self.data_manager.current_data and self.tickers:
             self.create_chart()
             self.set_message(f'Esquema de colores cambiado', False)
 
@@ -123,8 +130,14 @@ class MultiStockApp(QWidget):
             self.set_message("Debe ingresar al menos un ticker.")
             return
         
-        # Limpiar predicciones previas
-        self.predictions = {}
+        # Verificar límite de tickers
+        if len(tickers) > self.data_manager.max_tickers:
+            self.set_message(f"Máximo {self.data_manager.max_tickers} tickers permitidos.")
+            return
+        
+        # Limpiar datos previos (libera memoria)
+        self.data_manager.clear_all()
+        self.tickers = []
         
         # Mostrar/ocultar controles de Base 100
         if len(tickers) > 1:
@@ -149,22 +162,33 @@ class MultiStockApp(QWidget):
         """Callback cuando termina la descarga de datos"""
         self._set_ui_enabled(True)
         
-        self.current_data = current_data
-        self.tickers = valid_tickers
-        
-        if not self.current_data:
+        if not current_data:
             self.set_message("No se obtuvieron datos para ningún ticker.")
             self.webview.setHtml("<h2>No se encontraron datos</h2>")
             return
         
+        # Store data with proper memory management
+        try:
+            self.tickers = self.data_manager.set_data(current_data, valid_tickers)
+            
+            # Optimize DataFrames to reduce memory
+            self.data_manager.optimize_dataframes()
+            
+            # Show memory usage (useful for debugging)
+            mem_usage = self.data_manager.get_memory_usage()
+            
+        except ValueError as e:
+            self.set_message(str(e))
+            return
+        
         self.create_chart()
-        msg = f"Gráfico generado para {len(self.tickers)} ticker(s)."
+        msg = f"Gráfico generado para {len(self.tickers)} ticker(s). Memoria: {mem_usage:.2f} MB"
         if errors:
             msg += f" ({len(errors)} errores)"
         self.set_message(msg, False)
 
     def generar_prediccion(self):
-        if not self.current_data or not self.tickers:
+        if not self.data_manager.current_data or not self.tickers:
             self.set_message("Primero debe cargar datos de tickers.")
             return
         
@@ -180,7 +204,7 @@ class MultiStockApp(QWidget):
         
         # Crear y ejecutar worker
         self.prediction_worker = PredictionWorker(
-            self.current_data, self.tickers, horizon, 
+            self.data_manager.current_data, self.tickers, horizon, 
             freq_str, is_auto, manual_order
         )
         self.prediction_worker.progress.connect(self._on_prediction_progress)
@@ -195,11 +219,13 @@ class MultiStockApp(QWidget):
         """Callback cuando terminan las predicciones"""
         self._set_ui_enabled(True)
         
-        self.predictions = predictions
+        # Store predictions with proper cleanup
+        self.data_manager.set_predictions(predictions)
         
-        if self.predictions:
+        if self.data_manager.predictions:
             self.create_chart()
-            msg = f"Predicciones generadas para {len(self.predictions)} ticker(s)."
+            mem_usage = self.data_manager.get_memory_usage()
+            msg = f"Predicciones generadas para {len(self.data_manager.predictions)} ticker(s). Memoria: {mem_usage:.2f} MB"
             if errors:
                 msg += f" ({len(errors)} fallaron)"
             self.set_message(msg, False)
@@ -210,11 +236,12 @@ class MultiStockApp(QWidget):
         self.set_message("Generando gráfico...", False)
         
         html_str = generate_stock_chart(
-            self.current_data, self.tickers, self.predictions,
+            self.data_manager.current_data, self.tickers, self.data_manager.predictions,
             self.color_schemes, self.ticker_color_pairs, self.confidence_colors,
             self.current_color_scheme, self.use_base100,
             self.confidence_checkbox.isChecked(),
-            get_model_quality
+            get_model_quality,
+            self.background_image  # Pass background image
         )
         
         self.webview.setHtml(html_str)
@@ -222,9 +249,9 @@ class MultiStockApp(QWidget):
     
     def descargar_csv(self):
         filename, error = export_to_csv(
-            self.current_data, 
+            self.data_manager.current_data, 
             self.tickers, 
-            self.predictions
+            self.data_manager.predictions
         )
         
         if error:
@@ -233,13 +260,16 @@ class MultiStockApp(QWidget):
             self.set_message(f"Datos guardados en '{filename}' (carpeta Descargas).", is_error=False)
 
     def closeEvent(self, event):
-        """Cleanup workers on close"""
+        """Cleanup workers and data on close"""
         if self.data_worker and self.data_worker.isRunning():
             self.data_worker.terminate()
             self.data_worker.wait()
         if self.prediction_worker and self.prediction_worker.isRunning():
             self.prediction_worker.terminate()
             self.prediction_worker.wait()
+        
+        # Clean up all data before exit
+        self.data_manager.clear_all()
         event.accept()
 
 if __name__ == '__main__':

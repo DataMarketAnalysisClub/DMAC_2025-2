@@ -1,11 +1,17 @@
+"""
+Updated plotting.py to include background image in Plotly chart
+"""
 import plotly.graph_objects as go
 
 def generate_stock_chart(current_data, tickers, predictions, 
                          color_schemes, ticker_color_pairs, confidence_colors,
                          current_color_scheme, use_base100, show_confidence,
-                         get_model_quality_func):
+                         get_model_quality_func, background_image=None):
     """
     Genera la figura de Plotly con los datos históricos y las predicciones.
+    
+    Args:
+        background_image: Base64 encoded image string (optional)
     """
     if not current_data or not tickers:
         return go.Figure()
@@ -136,11 +142,12 @@ def generate_stock_chart(current_data, tickers, predictions,
                         borderpad=8, font=dict(size=10)
                     )
                 )
-                y_position -= 0.15 # Espacio entre métricas
+                y_position -= 0.15
     
     # Layout final
     fig = go.Figure(data=traces)
-    fig.update_layout(
+    
+    layout_config = dict(
         title=title,
         xaxis_title='Fecha',
         yaxis_title='Precio (Base 100)' if is_base100 else 'Precio',
@@ -149,7 +156,42 @@ def generate_stock_chart(current_data, tickers, predictions,
         legend=dict(x=0, y=1, orientation='h'),
         height=550,
         annotations=annotations,
-        margin=dict(r=200) # Espacio para las métricas
+        margin=dict(r=200),
+
+        xaxis=dict(
+            showline=True,        # Show the main X-axis line
+            linecolor='black',    # Color the line black
+            showgrid=True,        # Show the grid
+            gridcolor='lightgray', # Color the grid light gray
+            zerolinecolor='black' # Make the zero line black
+        ),
+        yaxis=dict(
+            showline=True,        # Show the main Y-axis line
+            linecolor='black',    # Color the line black
+            showgrid=True,        # Show the grid
+            gridcolor='lightgray',    # Color the grid light grey
+            zerolinecolor='black' # Make the zero line black
+        ),
+        plot_bgcolor='white',
+        paper_bgcolor='white'
     )
+    
+    # Add background image if provided
+    if background_image:
+        layout_config['images'] = [dict(
+            source=background_image,
+            xref="paper",
+            yref="paper",
+            x=0.5,  # Center horizontally
+            y=0.5,  # Center vertically
+            sizex=1.2,  # Width (adjust between 0-1 for size)
+            sizey=1.2,  # Height (adjust between 0-1 for size)
+            xanchor="center",
+            yanchor="middle",
+            opacity=0.10,  # 15% opacity for subtle watermark
+            layer="below"  # Place below traces
+        )]
+    
+    fig.update_layout(**layout_config)
     
     return fig.to_html(include_plotlyjs='cdn')
