@@ -208,7 +208,7 @@ def setup_ui(main_window):
     main_window.main_layout_main_screen.addWidget(main_window.message_label)
     
     main_window.webview = QWebEngineView()
-    main_window.main_layout_main_screen.addWidget(main_window.webview)
+    main_window.main_layout_main_screen.addWidget(main_window.webview,1)
     main_window.webview.setHtml("<h2>Ingrese uno o más tickers y presione 'Ejecutar'</h2>")
     
     main_window.back_button = QPushButton('Volver')
