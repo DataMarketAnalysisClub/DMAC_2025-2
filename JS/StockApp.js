@@ -364,10 +364,7 @@ class StockApp {
                             <div class="input-group">
                                 <label for="projection-period">Periodo de proyección:</label>
                                 <select id="projection-period">
-                                    <option value="1mo">1 mes</option>
-                                    <option value="6mo">6 meses</option>
-                                    <option value="1y" selected>1 año</option>
-                                    <option value="5y">5 años</option>
+                                    <option value="auto" selected>Automático</option>
                                 </select>
                             </div>
                             <div class="input-group">
@@ -1468,7 +1465,7 @@ class StockApp {
             return;
         }
         
-        const projectionPeriod = document.getElementById('projection-period').value;
+        const projectionPeriod = 'auto'; // Ahora siempre usamos proyección automática basada en frecuencia
         let projectionMethod = document.getElementById('projection-method').value;
         
         // Verificar si la biblioteca está cargada para métodos avanzados
@@ -1569,40 +1566,115 @@ class StockApp {
         let pointsToGenerate = 0;
         let intervalDays = 0;
         
-        switch (period) {
-            case '1mo': 
-                pointsToGenerate = 20;  // Aproximadamente 20 días hábiles en un mes
+        // Determinar el tipo de frecuencia de datos basado en los intervalos observados
+        let dataFrequency = 'diario'; // por defecto asumimos datos diarios
+        
+        if (data.length > 5) {
+            // Calcular la mediana de los intervalos entre los últimos 6 puntos para mayor robustez
+            const intervals = [];
+            for (let i = data.length - 1; i >= data.length - 5; i--) {
+                if (i > 0) {
+                    const date1 = new Date(data[i].date);
+                    const date2 = new Date(data[i-1].date);
+                    const diffDays = Math.round((date1 - date2) / (1000 * 60 * 60 * 24));
+                    intervals.push(Math.max(1, diffDays));
+                }
+            }
+            
+            // Ordenar y tomar el valor central (mediana)
+            intervals.sort((a, b) => a - b);
+            const medianInterval = intervals[Math.floor(intervals.length / 2)];
+            
+            // Determinar la frecuencia basada en el intervalo mediano
+            if (medianInterval >= 28) {
+                dataFrequency = 'mensual';
+            } else if (medianInterval >= 5) {
+                dataFrequency = 'semanal';
+            }
+            
+            console.log(`Frecuencia detectada: ${dataFrequency} (intervalo mediano: ${medianInterval} días)`);
+        }
+        
+        // Determinar los puntos a generar según la frecuencia de los datos y el período seleccionado
+        switch (dataFrequency) {
+            case 'diario':
+                // Para datos diarios: de 1 a 90 días
+                pointsToGenerate = 90;
                 intervalDays = 1;
                 break;
-            case '6mo': 
-                pointsToGenerate = 26;  // Aproximadamente 26 semanas en 6 meses
+                
+            case 'semanal':
+                // Para datos semanales: de 1 a 8 semanas
+                pointsToGenerate = 8;
                 intervalDays = 7;
                 break;
-            case '1y': 
-                pointsToGenerate = 52;  // 52 semanas en un año
-                intervalDays = 7;
-                break;
-            case '5y': 
-                pointsToGenerate = 60;  // 60 meses en 5 años
+                
+            case 'mensual':
+                // Para datos mensuales: de 1 a 3 meses
+                pointsToGenerate = 3;
                 intervalDays = 30;
                 break;
+                
             default:
-                pointsToGenerate = 52;  // Valor por defecto: 1 año
-                intervalDays = 7;
+                // Valor por defecto si no podemos determinar la frecuencia
+                pointsToGenerate = 30;
+                intervalDays = 1;
         }
         
-        // Calcular el intervalo basado en los datos existentes
+        // Ajustar los puntos a generar basándose en los datos históricos disponibles
+        // No tiene sentido generar muchos más puntos que los datos históricos disponibles
+        const maxPoints = Math.max(30, Math.min(pointsToGenerate, Math.ceil(data.length * 0.75)));
+        if (maxPoints < pointsToGenerate) {
+            console.log(`Ajustando puntos a generar de ${pointsToGenerate} a ${maxPoints} basado en datos históricos disponibles`);
+            pointsToGenerate = maxPoints;
+        }
+        
+        // Calcular el intervalo basado en los datos existentes de manera más robusta
         // Si los datos son diarios, semanales o mensuales
         let actualInterval = 7; // Por defecto asumimos semanal
-        if (data.length > 1) {
-            const date1 = new Date(data[data.length - 1].date);
-            const date2 = new Date(data[data.length - 2].date);
-            const diffDays = Math.round((date1 - date2) / (1000 * 60 * 60 * 24));
-            actualInterval = Math.max(1, diffDays);
+        
+        if (data.length > 5) {
+            // Calcular la mediana de los intervalos entre los últimos 6 puntos para mayor robustez
+            const intervals = [];
+            for (let i = data.length - 1; i >= data.length - 5; i--) {
+                if (i > 0) {
+                    const date1 = new Date(data[i].date);
+                    const date2 = new Date(data[i-1].date);
+                    const diffDays = Math.round((date1 - date2) / (1000 * 60 * 60 * 24));
+                    intervals.push(Math.max(1, diffDays));
+                }
+            }
+            
+            // Ordenar y tomar el valor central (mediana)
+            intervals.sort((a, b) => a - b);
+            actualInterval = intervals[Math.floor(intervals.length / 2)];
+        } else if (data.length > 1) {
+            // Si hay pocos puntos, usar la media de todos los intervalos disponibles
+            let totalDiff = 0;
+            let count = 0;
+            
+            for (let i = 1; i < data.length; i++) {
+                const date1 = new Date(data[i].date);
+                const date2 = new Date(data[i-1].date);
+                const diffDays = Math.round((date1 - date2) / (1000 * 60 * 60 * 24));
+                totalDiff += Math.max(1, diffDays);
+                count++;
+            }
+            
+            actualInterval = Math.round(totalDiff / count);
         }
         
-        // Usar el intervalo calculado en lugar del predeterminado
-        intervalDays = actualInterval;
+        // Determinar si debemos usar el intervalo calculado o mantener el predefinido
+        // Si el intervalo calculado es similar al predefinido (±1 día), mantener el predefinido
+        // para alinear mejor con las expectativas del usuario según el período seleccionado
+        if (Math.abs(actualInterval - intervalDays) <= 1) {
+            // Mantener intervalDays como está (no lo cambiamos)
+            console.log(`Manteniendo intervalo predefinido: ${intervalDays} días`);
+        } else {
+            // Usar el intervalo calculado
+            console.log(`Cambiando intervalo de ${intervalDays} a ${actualInterval} días según los datos`);
+            intervalDays = actualInterval;
+        }
         
         // Obtener los parámetros del modelo desde la entrada
         const paramsInput = document.getElementById('model-params').value.trim();
@@ -1614,6 +1686,10 @@ class StockApp {
         
         // Generar proyección según el método seleccionado
         let projectedPrices = [];
+        
+        // Registrar información de la proyección para depuración
+        console.log(`Proyección: método=${method}, periodo=${period}, puntos=${pointsToGenerate}, intervalo=${intervalDays} días`);
+        console.log(`Datos históricos: ${prices.length} puntos, último=${prices[prices.length-1]}`);
         
         try {
             switch (method) {
@@ -1637,6 +1713,10 @@ class StockApp {
                     projectedPrices = this.calculateLinear(prices, pointsToGenerate);
                     break;
             }
+            
+            // Registrar los resultados de la proyección
+            console.log(`Proyección generada: ${projectedPrices.length} puntos, primero=${projectedPrices[0]}, último=${projectedPrices[projectedPrices.length-1]}`);
+            
         } catch (error) {
             console.error(`Error al calcular proyección con método ${method}:`, error);
             this.setMessage(`Error en cálculo de ${method}: ${error.message}. Usando tendencia lineal.`);
@@ -1649,11 +1729,46 @@ class StockApp {
         const projectedData = [];
         const lastClose = prices[prices.length - 1];
         
+        // Función auxiliar para verificar si una fecha es fin de semana
+        const isWeekend = (date) => {
+            const day = date.getDay();
+            return day === 0 || day === 6; // 0 es domingo, 6 es sábado
+        };
+        
+        // Función para avanzar a la siguiente fecha hábil (omite fines de semana)
+        const nextBusinessDay = (date) => {
+            const nextDay = new Date(date);
+            nextDay.setDate(nextDay.getDate() + 1);
+            // Si cae en fin de semana, avanzar hasta el lunes
+            while (isWeekend(nextDay)) {
+                nextDay.setDate(nextDay.getDate() + 1);
+            }
+            return nextDay;
+        };
+        
         // Generar datos completos con fechas y precios OHLC
         for (let i = 0; i < projectedPrices.length; i++) {
-            // Calcular nueva fecha
-            const newDate = new Date(lastDate);
-            newDate.setDate(newDate.getDate() + intervalDays * (i + 1));
+            // Calcular nueva fecha considerando el intervalo
+            let newDate = new Date(lastDate);
+            
+            // Avanzar los días según el intervalo
+            if (intervalDays === 1) {
+                // Para datos diarios, avanzamos día a día omitiendo fines de semana
+                for (let j = 0; j < i + 1; j++) {
+                    newDate = nextBusinessDay(newDate);
+                }
+            } else if (intervalDays <= 7) {
+                // Para datos semanales, avanzamos en múltiplos de 7 días
+                // y ajustamos para que caiga en día hábil
+                newDate.setDate(newDate.getDate() + intervalDays * (i + 1));
+                while (isWeekend(newDate)) {
+                    newDate.setDate(newDate.getDate() + 1); // Mover al siguiente día hábil
+                }
+            } else {
+                // Para datos mensuales o mayores intervalos
+                newDate.setDate(newDate.getDate() + intervalDays * (i + 1));
+            }
+            
             const dateStr = newDate.toISOString().split('T')[0];
             
             // Asegurar que el precio proyectado no sea negativo
@@ -1725,79 +1840,73 @@ class StockApp {
         }
         
         const q = params.q || 2; // Orden de MA
+        console.log(`Calculando Media Móvil con q=${q}`);
         
         try {
-            // Usamos Savitzky-Golay para suavizar los datos (una forma de media móvil)
-            const options = {
-                windowSize: Math.min(Math.max(3, q * 2 + 1), data.length - 1), // Ventana debe ser impar y no mayor que los datos
-                derivative: 0,
-                polynomial: 2
-            };
+            // Implementación más correcta del modelo MA(q)
+            // En un modelo MA(q), la proyección se basa en la media y los errores históricos
             
-            // Aplicar suavizado
-            let smoothed = data;
+            // 1. Calcular la media de la serie
+            const mean = data.reduce((sum, value) => sum + value, 0) / data.length;
             
-            // Intentar usar bibliotecas disponibles, con fallback incluido
-            if (hasSG && typeof SG.savitzkyGolay === 'function') {
-                try {
-                    smoothed = SG.savitzkyGolay(data, 1, options);
-                    console.log("Usando SG para media móvil");
-                } catch (e) {
-                    console.warn("Error al usar SG:", e);
-                }
-            } else if (hasFili) {
-                try {
-                    // Alternativa usando fili.js
-                    const firCalculator = new Fili.FirCoeffs();
-                    const firCoeffs = firCalculator.lowpass({
-                        order: q * 2,
-                        Fs: 1,
-                        Fc: 0.2
-                    });
-                    
-                    const filter = new Fili.FirFilter(firCoeffs);
-                    smoothed = filter.multiStep(data);
-                    console.log("Usando Fili para media móvil");
-                } catch (e) {
-                    console.warn("Error al usar Fili:", e);
-                }
-            } else {
-                // Implementación manual simple de media móvil si ninguna biblioteca está disponible
-                smoothed = [];
-                for (let i = 0; i < data.length; i++) {
-                    let sum = 0;
-                    let count = 0;
-                    
-                    // Calcular media de ventana móvil
-                    for (let j = Math.max(0, i - q); j <= Math.min(data.length - 1, i + q); j++) {
-                        sum += data[j];
-                        count++;
-                    }
-                    
-                    smoothed.push(sum / count);
-                }
-                console.log("Usando implementación manual para media móvil");
+            // 2. Calcular los errores (residuos) como desviaciones de la media
+            const errors = data.map(value => value - mean);
+            
+            // 3. Generar coeficientes MA con pesos decrecientes
+            const maCoefficients = [];
+            const total = q * (q + 1) / 2; // Para normalización de pesos
+            
+            for (let i = 1; i <= q; i++) {
+                maCoefficients.push((q - i + 1) / total);
             }
             
-            // Calcular la tendencia a partir de los datos suavizados
-            const recent = smoothed.slice(-5);
-            let avgChange = 0;
-            
-            for (let i = 1; i < recent.length; i++) {
-                avgChange += recent[i] - recent[i - 1];
-            }
-            avgChange /= (recent.length - 1);
-            
-            // Generar proyección
+            // 4. Crear la proyección
             const forecast = [];
-            let lastValue = smoothed[smoothed.length - 1];
+            
+            // Usar los últimos q errores para la proyección
+            const lastErrors = errors.slice(-q);
             
             for (let i = 0; i < horizon; i++) {
-                lastValue += avgChange;
-                forecast.push(lastValue);
+                // La predicción es la media más una combinación ponderada de errores recientes
+                let errorComponent = 0;
+                
+                for (let j = 0; j < Math.min(q, lastErrors.length); j++) {
+                    errorComponent += maCoefficients[j] * lastErrors[lastErrors.length - 1 - j];
+                }
+                
+                // La predicción es la media más el componente de error
+                // Atenuamos el efecto de los errores en proyecciones futuras
+                const attenuation = Math.pow(0.9, i); // Factor de atenuación
+                const prediction = mean + errorComponent * attenuation;
+                
+                forecast.push(prediction);
+                
+                // Para proyecciones futuras, asumimos error 0 (ya no podemos conocerlo)
+                // pero mantenemos la estructura de los errores anteriores
+                if (i < horizon - 1) {
+                    lastErrors.shift();
+                    lastErrors.push(0);
+                }
             }
             
-            return forecast;
+            // 5. Suavizar la proyección para eliminar oscilaciones anormales
+            let smoothedForecast = [];
+            
+            // Usar media móvil simple para suavizar
+            for (let i = 0; i < forecast.length; i++) {
+                let sum = 0;
+                let count = 0;
+                
+                // Ventana de 3 puntos centrada
+                for (let j = Math.max(0, i - 1); j <= Math.min(forecast.length - 1, i + 1); j++) {
+                    sum += forecast[j];
+                    count++;
+                }
+                
+                smoothedForecast.push(sum / count);
+            }
+            
+            return smoothedForecast;
         } catch (e) {
             console.error('Error en cálculo MA:', e);
             return this.calculateLinear(data, horizon); // Fallback a lineal
@@ -1944,7 +2053,7 @@ class StockApp {
             const hasARIMA = typeof window.ARIMA === 'function';
             
             if (hasARIMA) {
-                console.log("Usando biblioteca ARIMA para proyección");
+                console.log(`Usando biblioteca ARIMA para proyección con parámetros p=${p}, d=${d}, q=${q}`);
                 
                 // Usar la implementación de la biblioteca
                 const arimaConfig = {
@@ -1960,20 +2069,39 @@ class StockApp {
                 // Realizar la predicción
                 return arimaModel.predict(horizon);
             } else {
-                console.log("Biblioteca ARIMA no disponible, usando implementación propia");
+                console.log(`Biblioteca ARIMA no disponible, usando implementación propia con p=${p}, d=${d}, q=${q}`);
                 
                 // Implementación manual como fallback
-                // Diferenciar los datos d veces
-                let diffData = [...data];
+                // 1. Normalizar los datos entre 0 y 1 para estabilidad numérica
+                const minVal = Math.min(...data);
+                const maxVal = Math.max(...data);
+                const range = maxVal - minVal;
+                const normalizedData = range === 0 ? 
+                    data.map(() => 0) : 
+                    data.map(val => (val - minVal) / range);
+                
+                // 2. Diferenciar los datos d veces
+                let diffData = [...normalizedData];
+                const originalLevels = [];
+                
                 for (let i = 0; i < d; i++) {
+                    // Guardar el último valor antes de diferenciar para la integración
+                    originalLevels.push(diffData[diffData.length - 1]);
                     diffData = this.differenceData(diffData);
                 }
                 
-                // Aplicar ARMA al resultado diferenciado
+                // 3. Aplicar ARMA al resultado diferenciado con parámetros específicos
                 const armaForecast = this.calculateARMA(diffData, horizon, { p, q });
                 
-                // Integrar las diferencias para obtener la predicción final
-                return this.integrateData(armaForecast, data, d);
+                // 4. Integrar las diferencias para obtener la predicción final
+                let forecast = this.improvedIntegrateData(armaForecast, originalLevels, d);
+                
+                // 5. Desnormalizar los resultados
+                forecast = range === 0 ? 
+                    forecast.map(() => minVal) : 
+                    forecast.map(val => val * range + minVal);
+                
+                return forecast;
             }
         } catch (e) {
             console.error('Error en cálculo ARIMA:', e);
@@ -1993,7 +2121,7 @@ class StockApp {
     }
     
     /**
-     * Integra los datos diferenciados para obtener valores originales
+     * Integra los datos diferenciados para obtener valores originales (método original)
      */
     integrateData(forecast, originalData, d) {
         let result = [...forecast];
@@ -2002,6 +2130,37 @@ class StockApp {
             const lastOriginal = originalData[originalData.length - 1 - i];
             for (let j = 0; j < result.length; j++) {
                 result[j] = (j === 0) ? lastOriginal + result[j] : result[j - 1] + result[j];
+            }
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Versión mejorada de integración para ARIMA
+     * @param {Array} forecast - Valores pronosticados diferenciados
+     * @param {Array} originalLevels - Valores originales antes de diferenciar
+     * @param {number} d - Orden de diferenciación
+     * @returns {Array} - Serie integrada
+     */
+    improvedIntegrateData(forecast, originalLevels, d) {
+        if (d === 0) return forecast;
+        
+        let result = [...forecast];
+        
+        // Integrar en orden inverso (del más diferenciado al menos diferenciado)
+        for (let i = d - 1; i >= 0; i--) {
+            const baseValue = originalLevels[i];
+            
+            // Valor acumulado para la integración
+            let accumulator = baseValue;
+            
+            // Integrar cada punto
+            for (let j = 0; j < result.length; j++) {
+                // Añadir el valor diferenciado al acumulador
+                accumulator += result[j];
+                // Reemplazar el valor en el resultado
+                result[j] = accumulator;
             }
         }
         
