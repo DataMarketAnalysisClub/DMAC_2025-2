@@ -1,8 +1,10 @@
+import os
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
                              QPushButton, QComboBox, QCheckBox, QRadioButton, 
                              QButtonGroup, QGroupBox, QSpinBox)
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QPixmap
 
 def setup_ui(main_window):
     """
@@ -20,6 +22,25 @@ def setup_ui(main_window):
     main_window.init_label.setAlignment(Qt.AlignCenter)
     main_window.init_label.setStyleSheet('font-size: 24px; font-weight: bold;')
     init_layout.addWidget(main_window.init_label)
+
+    # --- START: ADD LOGO TO WELCOME SCREEN ---
+    main_window.welcome_logo_label = QLabel()
+    
+    # Build the correct path relative to this file
+    script_dir = os.path.dirname(__file__) 
+    logo_path = os.path.join(script_dir, 'images', 'DMAC.png')
+    
+    pixmap = QPixmap(logo_path)
+    
+    # Scale it to a larger size for the welcome screen (adjust 150 as needed)
+    scaled_pixmap = pixmap.scaledToHeight(500, Qt.SmoothTransformation) 
+    
+    main_window.welcome_logo_label.setPixmap(scaled_pixmap)
+    main_window.welcome_logo_label.setAlignment(Qt.AlignCenter) # Center it
+    main_window.welcome_logo_label.setStyleSheet("margin: 10px;") # Add spacing
+    
+    init_layout.addWidget(main_window.welcome_logo_label)
+    # --- END: ADD LOGO ---
     
     info_label = QLabel('Compare acciones y prediga con ARIMA')
     info_label.setAlignment(Qt.AlignCenter)
@@ -79,6 +100,19 @@ def setup_ui(main_window):
     main_window.color_input.addItems(['Verde/Rojo (Clásico)', 'Colores Club'])
     main_window.color_input.setCurrentText('Colores Club')
     input_layout2.addWidget(main_window.color_input)
+
+    # --- START: ADD LOGO ---
+    main_window.logo_label = QLabel()
+    pixmap = QPixmap(logo_path)
+    scaled_pixmap = pixmap.scaledToHeight(50, Qt.SmoothTransformation)
+    
+    # Scale the logo to a fixed height so it doesn't break the layout
+    scaled_pixmap = pixmap.scaledToHeight(30, Qt.SmoothTransformation)
+    
+    main_window.logo_label.setPixmap(scaled_pixmap)
+    main_window.logo_label.setStyleSheet("margin-left: 10px;") # Optional: adds space
+    input_layout2.addWidget(main_window.logo_label)
+    # --- END: ADD LOGO ---
     
     main_window.base100_checkbox = QCheckBox('Usar Base 100')
     main_window.base100_checkbox.setChecked(True)
