@@ -179,7 +179,7 @@ def setup_ui(main_window):
     horizon_label = QLabel('Horizonte:')
     horizon_layout.addWidget(horizon_label)
     main_window.horizon_input = QComboBox()
-    main_window.horizon_input.addItems(['7 días', '14 días', '30 días', '60 días', '90 días'])
+    main_window.horizon_input.addItems(['7 periodos', '14 periodos', '30 periodos', '60 periodos', '90 periodos'])
     main_window.horizon_input.setCurrentText('30 días')
     horizon_layout.addWidget(main_window.horizon_input)
     main_window.confidence_checkbox = QCheckBox('Mostrar intervalo 95%')
