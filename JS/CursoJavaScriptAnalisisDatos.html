@@ -243,7 +243,35 @@ async function cargarBibliotecas() {
 }</pre>
             </div>
             
-            <button id="btn-obtener-datos" class="btn">Obtener Datos de AAPL</button>
+            <div style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 8px;">
+                <h3 style="margin-top: 0; color: #0d47a1;">Configuración de Datos</h3>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: inline-block; width: 150px; font-weight: bold;">Ticker:</label>
+                    <input id="input-ticker" type="text" value="AAPL" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; width: 100px;" placeholder="Ej: AAPL" />
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: inline-block; width: 150px; font-weight: bold;">Periodo:</label>
+                    <select id="select-periodo" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; width: 200px;">
+                        <option value="1d" selected>Diario (1d)</option>
+                        <option value="1wk">Semanal (1wk)</option>
+                        <option value="1mo">Mensual (1mo)</option>
+                    </select>
+                </div>
+                
+                <div style="margin-bottom: 15px;">
+                    <label style="display: inline-block; width: 150px; font-weight: bold;">Rango histórico:</label>
+                    <select id="select-rango" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; width: 200px;">
+                        <option value="3mo" selected>3 meses</option>
+                        <option value="6mo">6 meses</option>
+                        <option value="1y">1 año</option>
+                        <option value="5y">5 años</option>
+                    </select>
+                </div>
+            </div>
+            
+            <button id="btn-obtener-datos" class="btn">Obtener Datos</button>
             <div id="datos-resumen"></div>
         </div>
         
@@ -317,7 +345,69 @@ async function cargarBibliotecas() {
         </div>
         
         <div class="section">
-            <h2>6. Análisis Comparativo</h2>
+            <h2>6. Intervalos de Confianza en Predicciones</h2>
+            <p>Los intervalos de confianza nos permiten cuantificar la incertidumbre en nuestras predicciones. Cuanto más lejos proyectamos en el futuro, mayor es la incertidumbre.</p>
+            
+            <div class="info-box">
+                <p><strong>¿Qué son los intervalos de confianza?</strong></p>
+                <p>Un intervalo de confianza del 95% significa que esperamos que el valor real caiga dentro de ese rango el 95% de las veces. Es una forma de expresar la incertidumbre de nuestras predicciones.</p>
+            </div>
+            
+            <div class="code-example">
+                <pre>// Calcular intervalos de confianza
+const calculador = new IntervalosConfianza(datosHistoricos, predicciones);
+
+// Método 1: Basado en desviación estándar
+const intervalos95 = calculador.calcularIntervaloDesviacionEstandar(0.95);
+
+// Método 2: Basado en volatilidad del activo
+const intervalosVol = calculador.calcularIntervaloVolatilidad(20, 0.95);
+
+// Método 3: Bootstrap (simulaciones)
+const intervalosBootstrap = calculador.calcularIntervaloBootstrap(0.95, 1000);
+
+// Método 4: Combinado (más robusto)
+const intervalosRobustos = calculador.calcularIntervalosRobustos({
+    nivelConfianza: 0.95,
+    ventanaVolatilidad: 20
+});</pre>
+            </div>
+            
+            <div style="margin: 20px 0;">
+                <label style="display: inline-block; margin-right: 10px;"><strong>Método de cálculo:</strong></label>
+                <select id="select-metodo-ic" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+                    <option value="desviacionEstandar">Desviación Estándar</option>
+                    <option value="volatilidad" selected>Volatilidad</option>
+                    <option value="bootstrap">Bootstrap</option>
+                    <option value="robusto">Robusto (Combinado)</option>
+                </select>
+                
+                <label style="display: inline-block; margin-left: 20px; margin-right: 10px;"><strong>Nivel de confianza:</strong></label>
+                <select id="select-nivel-confianza" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+                    <option value="0.80">80%</option>
+                    <option value="0.90">90%</option>
+                    <option value="0.95" selected>95%</option>
+                    <option value="0.99">99%</option>
+                </select>
+            </div>
+            
+            <button id="btn-ic-simple" class="btn">Predicción con Intervalo de Confianza</button>
+            <button id="btn-ic-multiple" class="btn" style="background-color: #43A047;">Múltiples Niveles de Confianza</button>
+            
+            <div id="grafico-intervalos" class="grafico-container"></div>
+            
+            <div class="warning-box">
+                <p><strong>Interpretación:</strong></p>
+                <ul>
+                    <li><strong>Banda sombreada:</strong> Representa el intervalo de confianza. Los valores reales futuros deberían caer dentro de esta banda con la probabilidad especificada.</li>
+                    <li><strong>Expansión del intervalo:</strong> Nota cómo el intervalo se expande a medida que nos alejamos en el tiempo, reflejando mayor incertidumbre.</li>
+                    <li><strong>Métodos diferentes:</strong> Cada método tiene sus ventajas. La volatilidad es útil para activos financieros, mientras que el bootstrap es más general.</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>7. Análisis Comparativo</h2>
             <p>Podemos comparar el rendimiento de diferentes acciones normalizando a base 100:</p>
             
             <div id="grafico-comparativo" class="grafico-container"></div>
@@ -359,7 +449,7 @@ function crearGraficoComparativo(datosPorTicker, contenedorId) {
         </div>
         
         <div class="section">
-            <h2>7. Implementación Completa</h2>
+            <h2>8. Implementación Completa</h2>
             <p>Hemos creado un archivo completo con todas estas funcionalidades que puedes revisar:</p>
             <p><strong>Archivo:</strong> <code>CursoJavaScriptAnalisisDatos.js</code></p>
             
@@ -370,6 +460,7 @@ function crearGraficoComparativo(datosPorTicker, contenedorId) {
                     <li>API para interactuar con Yahoo Finance</li>
                     <li>Procesamiento de datos financieros</li>
                     <li>Modelos estadísticos (MA, AR, ARIMA)</li>
+                    <li>Cálculo de intervalos de confianza (múltiples métodos)</li>
                     <li>Visualización interactiva con múltiples tipos de gráficos</li>
                 </ul>
                 <p>¡Explora el código para aprender más sobre análisis de datos en JavaScript!</p>
@@ -398,6 +489,8 @@ function crearGraficoComparativo(datosPorTicker, contenedorId) {
         const btnObtenerDatos = document.getElementById('btn-obtener-datos');
         const btnCrearGrafico = document.getElementById('btn-crear-grafico');
         const btnPrediccion = document.getElementById('btn-prediccion');
+        const btnICSimple = document.getElementById('btn-ic-simple');
+        const btnICMultiple = document.getElementById('btn-ic-multiple');
         const btnComparar = document.getElementById('btn-comparar');
         
         const statusBibliotecas = document.getElementById('status-bibliotecas');
@@ -426,25 +519,48 @@ function crearGraficoComparativo(datosPorTicker, contenedorId) {
                 return;
             }
             
-            datosResumen.innerHTML = '<p>Obteniendo datos de AAPL...</p>';
+            // Obtener los valores seleccionados
+            const ticker = document.getElementById('input-ticker').value.toUpperCase() || 'AAPL';
+            const periodo = document.getElementById('select-periodo').value;
+            const rango = document.getElementById('select-rango').value;
+            
+            // Obtener el nombre descriptivo del periodo y rango
+            const yahooAPI = new YahooFinanceAPI();
+            const periodoTexto = yahooAPI.traducirPeriodo(periodo);
+            const rangoTexto = yahooAPI.traducirRango(rango);
+            
+            datosResumen.innerHTML = `<p>Obteniendo datos de ${ticker} (${periodoTexto}, ${rangoTexto})...</p>`;
             datosResumen.style.color = '#2196F3';
             
             try {
-                const yahooAPI = new YahooFinanceAPI();
-                datosDemostracion.AAPL = await yahooAPI.obtenerDatosHistoricos('AAPL', '1d', '3mo');
-                datosDemostracion.MSFT = await yahooAPI.obtenerDatosHistoricos('MSFT', '1d', '3mo');
-                datosDemostracion.GOOG = await yahooAPI.obtenerDatosHistoricos('GOOG', '1d', '3mo');
+                // Obtener datos para el ticker principal
+                datosDemostracion[ticker] = await yahooAPI.obtenerDatosHistoricos(ticker, periodo, rango);
+                
+                // También obtener datos de MSFT y GOOG para comparaciones (si no es el ticker principal)
+                if (ticker !== 'AAPL') {
+                    datosDemostracion.AAPL = await yahooAPI.obtenerDatosHistoricos('AAPL', periodo, rango);
+                }
+                if (ticker !== 'MSFT') {
+                    datosDemostracion.MSFT = await yahooAPI.obtenerDatosHistoricos('MSFT', periodo, rango);
+                }
+                if (ticker !== 'GOOG') {
+                    datosDemostracion.GOOG = await yahooAPI.obtenerDatosHistoricos('GOOG', periodo, rango);
+                }
                 
                 // Mostrar resumen
-                datosResumen.innerHTML = `
-                    <p>✅ Datos obtenidos correctamente:</p>
-                    <ul>
-                        <li>AAPL: ${datosDemostracion.AAPL.length} registros</li>
-                        <li>MSFT: ${datosDemostracion.MSFT.length} registros</li>
-                        <li>GOOG: ${datosDemostracion.GOOG.length} registros</li>
-                    </ul>
-                    <p>Rango: ${datosDemostracion.AAPL[0].fecha} a ${datosDemostracion.AAPL[datosDemostracion.AAPL.length-1].fecha}</p>
-                `;
+                const tickersObtenidos = Object.keys(datosDemostracion);
+                let resumenHTML = '<p>✅ Datos obtenidos correctamente:</p><ul>';
+                tickersObtenidos.forEach(t => {
+                    resumenHTML += `<li><strong>${t}:</strong> ${datosDemostracion[t].length} registros</li>`;
+                });
+                resumenHTML += '</ul>';
+                
+                if (datosDemostracion[ticker] && datosDemostracion[ticker].length > 0) {
+                    resumenHTML += `<p><strong>Periodo:</strong> ${periodoTexto} | <strong>Rango:</strong> ${rangoTexto}</p>`;
+                    resumenHTML += `<p><strong>Fechas:</strong> ${datosDemostracion[ticker][0].fecha} a ${datosDemostracion[ticker][datosDemostracion[ticker].length-1].fecha}</p>`;
+                }
+                
+                datosResumen.innerHTML = resumenHTML;
                 datosResumen.style.color = '#4CAF50';
             } catch (error) {
                 datosResumen.innerHTML = `<p>❌ Error al obtener datos: ${error.message}</p>`;
@@ -453,24 +569,50 @@ function crearGraficoComparativo(datosPorTicker, contenedorId) {
         });
         
         btnCrearGrafico.addEventListener('click', () => {
-            if (!bibliotecasCargadas || !datosDemostracion.AAPL) {
-                alert('Primero debes cargar las bibliotecas y obtener los datos');
+            if (!bibliotecasCargadas) {
+                alert('Primero debes cargar las bibliotecas');
                 return;
             }
             
+            // Obtener el ticker actual
+            const ticker = document.getElementById('input-ticker').value.toUpperCase() || 'AAPL';
+            
+            if (!datosDemostracion[ticker]) {
+                alert(`No hay datos para ${ticker}. Primero obtén los datos.`);
+                return;
+            }
+            
+            const periodo = document.getElementById('select-periodo').value;
+            const rango = document.getElementById('select-rango').value;
+            
+            const yahooAPI = new YahooFinanceAPI();
+            const periodoTexto = yahooAPI.traducirPeriodo(periodo);
+            const rangoTexto = yahooAPI.traducirRango(rango);
+            
             const visualizador = new VisualizadorFinanciero('grafico');
-            visualizador.crearGraficoVelas(datosDemostracion.AAPL, 'Apple (AAPL) - Últimos 3 meses');
+            visualizador.crearGraficoVelas(
+                datosDemostracion[ticker], 
+                `${ticker} - ${periodoTexto}, ${rangoTexto}`
+            );
         });
         
         btnPrediccion.addEventListener('click', () => {
-            if (!bibliotecasCargadas || !datosDemostracion.AAPL) {
-                alert('Primero debes cargar las bibliotecas y obtener los datos');
+            if (!bibliotecasCargadas) {
+                alert('Primero debes cargar las bibliotecas');
+                return;
+            }
+            
+            // Obtener el ticker actual
+            const ticker = document.getElementById('input-ticker').value.toUpperCase() || 'AAPL';
+            
+            if (!datosDemostracion[ticker]) {
+                alert(`No hay datos para ${ticker}. Primero obtén los datos.`);
                 return;
             }
             
             // Crear el gráfico de velas
             const visualizador = new VisualizadorFinanciero('grafico-prediccion');
-            visualizador.crearGraficoVelas(datosDemostracion.AAPL, 'Apple (AAPL) con Predicción ARIMA');
+            visualizador.crearGraficoVelas(datosDemostracion[ticker], `${ticker} con Predicción ARIMA`);
             
             // Crear y aplicar modelo predictivo leyendo p,d,q desde los inputs
             try {
@@ -486,10 +628,10 @@ function crearGraficoComparativo(datosPorTicker, contenedorId) {
                 }
 
                 // Mostrar en el status los parámetros seleccionados
-                statusBibliotecas.innerHTML = `<p>Parámetros ARIMA seleccionados: p=${p}, d=${d}, q=${q}</p>`;
+                statusBibliotecas.innerHTML = `<p>Parámetros ARIMA seleccionados para ${ticker}: p=${p}, d=${d}, q=${q}</p>`;
 
-                const modelador = new ModelosSeriesTemporales(datosDemostracion.AAPL);
-                const prediccion = modelador.modeloARIMA(datosDemostracion.AAPL, {p: p, d: d, q: q}, 30);
+                const modelador = new ModelosSeriesTemporales(datosDemostracion[ticker]);
+                const prediccion = modelador.modeloARIMA(datosDemostracion[ticker], {p: p, d: d, q: q}, 30);
 
                 visualizador.agregarPrediccion(prediccion, `Predicción ARIMA (p=${p},d=${d},q=${q})`, {
                     color: '#FF9800',
@@ -509,6 +651,122 @@ function crearGraficoComparativo(datosPorTicker, contenedorId) {
             
             const visualizador = new VisualizadorFinanciero('grafico-comparativo');
             visualizador.crearGraficoComparativo(datosDemostracion, true, 'Comparación de Big Tech');
+        });
+        
+        btnICSimple.addEventListener('click', () => {
+            if (!bibliotecasCargadas) {
+                alert('Primero debes cargar las bibliotecas');
+                return;
+            }
+            
+            // Obtener el ticker actual
+            const ticker = document.getElementById('input-ticker').value.toUpperCase() || 'AAPL';
+            
+            if (!datosDemostracion[ticker]) {
+                alert(`No hay datos para ${ticker}. Primero obtén los datos.`);
+                return;
+            }
+            
+            try {
+                // Leer valores de los selects
+                const metodo = document.getElementById('select-metodo-ic').value;
+                const nivelConfianza = parseFloat(document.getElementById('select-nivel-confianza').value);
+                
+                // Crear el gráfico de velas
+                const visualizador = new VisualizadorFinanciero('grafico-intervalos');
+                visualizador.crearGraficoVelas(datosDemostracion[ticker], `${ticker} - Predicción con Intervalos de Confianza`);
+                
+                // Crear modelo y hacer predicción
+                const modelador = new ModelosSeriesTemporales(datosDemostracion[ticker]);
+                const prediccion = modelador.modeloARIMA(datosDemostracion[ticker], {p: 5, d: 1, q: 1}, 30);
+                
+                // Agregar predicción con intervalos de confianza
+                visualizador.agregarPrediccionConIntervalos(datosDemostracion[ticker], prediccion, {
+                    nombre: `Predicción ARIMA (${Math.round(nivelConfianza * 100)}% IC)`,
+                    color: '#FF9800',
+                    tipoLinea: 'dashdot',
+                    grosor: 3,
+                    nivelConfianza: nivelConfianza,
+                    metodo: metodo,
+                    opacidad: 0.25,
+                    mostrarLineasLimite: true
+                });
+                
+                statusBibliotecas.innerHTML = `<p>✅ Predicción generada para ${ticker} con intervalo de confianza del ${Math.round(nivelConfianza * 100)}% usando método: ${metodo}</p>`;
+                statusBibliotecas.style.color = '#4CAF50';
+            } catch (error) {
+                alert('Error al realizar predicción con intervalos: ' + error.message);
+                console.error(error);
+            }
+        });
+        
+        btnICMultiple.addEventListener('click', () => {
+            if (!bibliotecasCargadas) {
+                alert('Primero debes cargar las bibliotecas');
+                return;
+            }
+            
+            // Obtener el ticker actual
+            const ticker = document.getElementById('input-ticker').value.toUpperCase() || 'AAPL';
+            
+            if (!datosDemostracion[ticker]) {
+                alert(`No hay datos para ${ticker}. Primero obtén los datos.`);
+                return;
+            }
+            
+            try {
+                // Crear el gráfico de velas
+                const visualizador = new VisualizadorFinanciero('grafico-intervalos');
+                visualizador.crearGraficoVelas(datosDemostracion[ticker], `${ticker} - Múltiples Niveles de Confianza`);
+                
+                // Crear modelo y hacer predicción
+                const modelador = new ModelosSeriesTemporales(datosDemostracion[ticker]);
+                const prediccion = modelador.modeloARIMA(datosDemostracion[ticker], {p: 5, d: 1, q: 1}, 30);
+                
+                // Calcular intervalos con diferentes niveles
+                const calculador = new IntervalosConfianza(datosDemostracion[ticker], prediccion);
+                const intervalos99 = calculador.calcularIntervaloVolatilidad(20, 0.99);
+                const intervalos95 = calculador.calcularIntervaloVolatilidad(20, 0.95);
+                const intervalos80 = calculador.calcularIntervaloVolatilidad(20, 0.80);
+                
+                // Agregar intervalos de más amplio a más estrecho (para que se vean bien superpuestos)
+                visualizador.agregarIntervalosConfianza(prediccion, intervalos99, 'Predicción', {
+                    color: '#FFE082',
+                    colorFill: '#FFB74D',
+                    opacidad: 0.15,
+                    mostrarLineas: false,
+                    nivelConfianza: 99
+                });
+                
+                visualizador.agregarIntervalosConfianza(prediccion, intervalos95, 'Predicción', {
+                    color: '#FF9800',
+                    colorFill: '#FF9800',
+                    opacidad: 0.25,
+                    mostrarLineas: false,
+                    nivelConfianza: 95
+                });
+                
+                visualizador.agregarIntervalosConfianza(prediccion, intervalos80, 'Predicción', {
+                    color: '#F57C00',
+                    colorFill: '#F57C00',
+                    opacidad: 0.35,
+                    mostrarLineas: true,
+                    nivelConfianza: 80
+                });
+                
+                // Agregar línea de predicción
+                visualizador.agregarPrediccion(prediccion, 'Predicción ARIMA', {
+                    color: '#E65100',
+                    tipoLinea: 'solid',
+                    grosor: 3
+                });
+                
+                statusBibliotecas.innerHTML = `<p>✅ Gráfico generado para ${ticker} con múltiples niveles de confianza (80%, 95%, 99%)</p>`;
+                statusBibliotecas.style.color = '#4CAF50';
+            } catch (error) {
+                alert('Error al generar múltiples intervalos: ' + error.message);
+                console.error(error);
+            }
         });
     </script>
 </body>

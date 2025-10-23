@@ -362,9 +362,9 @@ class StockApp {
                         <div class="projection-controls">
                             <h3>Proyección de datos</h3>
                             <div class="input-group">
-                                <label for="projection-period">Periodo de proyección:</label>
-                                <select id="projection-period">
-                                    <option value="auto" selected>Automático</option>
+                                <label for="projection-horizon">Horizonte:</label>
+                                <select id="projection-horizon">
+                                    <option value="30" selected>30 periodos (por defecto)</option>
                                 </select>
                             </div>
                             <div class="input-group">
@@ -891,6 +891,9 @@ class StockApp {
             if (projectionContainer) {
                 projectionContainer.style.display = 'block';
             }
+            
+            // Actualizar las opciones de horizonte según la frecuencia
+            this.updateHorizonOptions(interval);
             
             // Restablecer estado de proyección
             this.showingProjection = false;
@@ -1457,6 +1460,70 @@ class StockApp {
     }
     
     /**
+     * Actualiza las opciones de horizonte de proyección según la frecuencia de los datos
+     * @param {string} interval - Intervalo de tiempo de los datos ('1d', '1wk', '1mo')
+     */
+    updateHorizonOptions(interval) {
+        const horizonSelect = document.getElementById('projection-horizon');
+        if (!horizonSelect) return;
+        
+        // Limpiar opciones existentes
+        horizonSelect.innerHTML = '';
+        
+        // Definir opciones según la frecuencia
+        let options = [];
+        
+        switch (interval) {
+            case '1d': // Datos diarios
+                options = [
+                    { value: 7, label: '1 semana (7 días)' },
+                    { value: 14, label: '2 semanas (14 días)' },
+                    { value: 21, label: '3 semanas (21 días)' },
+                    { value: 30, label: '1 mes (30 días)', selected: true },
+                    { value: 60, label: '2 meses (60 días)' },
+                    { value: 90, label: '3 meses (90 días)' }
+                ];
+                break;
+                
+            case '1wk': // Datos semanales
+                options = [
+                    { value: 4, label: '4 semanas (~1 mes)' },
+                    { value: 8, label: '8 semanas (~2 meses)', selected: true },
+                    { value: 12, label: '12 semanas (~3 meses)' },
+                    { value: 26, label: '26 semanas (~6 meses)' },
+                    { value: 52, label: '52 semanas (1 año)' }
+                ];
+                break;
+                
+            case '1mo': // Datos mensuales
+                options = [
+                    { value: 3, label: '3 meses', selected: true },
+                    { value: 6, label: '6 meses' },
+                    { value: 12, label: '12 meses (1 año)' },
+                    { value: 24, label: '24 meses (2 años)' },
+                    { value: 36, label: '36 meses (3 años)' }
+                ];
+                break;
+                
+            default:
+                options = [
+                    { value: 30, label: '30 periodos', selected: true }
+                ];
+        }
+        
+        // Agregar opciones al select
+        options.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            if (opt.selected) {
+                option.selected = true;
+            }
+            horizonSelect.appendChild(option);
+        });
+    }
+    
+    /**
      * Calcula y aplica una proyección a los datos actuales
      */
     applyProjection() {
@@ -1465,7 +1532,8 @@ class StockApp {
             return;
         }
         
-        const projectionPeriod = 'auto'; // Ahora siempre usamos proyección automática basada en frecuencia
+        const horizonSelect = document.getElementById('projection-horizon');
+        const projectionHorizon = horizonSelect ? parseInt(horizonSelect.value, 10) : 30;
         let projectionMethod = document.getElementById('projection-method').value;
         
         // Verificar si la biblioteca está cargada para métodos avanzados
@@ -1484,7 +1552,7 @@ class StockApp {
             }
         }
         
-        this.setMessage(`Calculando proyección ${projectionMethod} para ${projectionPeriod}...`, false);
+        this.setMessage(`Calculando proyección ${projectionMethod} para ${projectionHorizon} periodos...`, false);
         
         try {
             // Calcular datos de proyección para cada ticker
@@ -1500,7 +1568,7 @@ class StockApp {
                 
                 try {
                     // Calcular proyección según el método seleccionado
-                    const projectedData = this.calculateProjection(data, projectionPeriod, projectionMethod);
+                    const projectedData = this.calculateProjection(data, projectionHorizon, projectionMethod);
                     this.projectionData[ticker] = projectedData;
                 } catch (tickerError) {
                     console.error(`Error al calcular proyección para ${ticker}:`, tickerError);
@@ -1547,11 +1615,11 @@ class StockApp {
     /**
      * Calcula los datos de proyección según el método seleccionado
      * @param {Array} data - Datos históricos del ticker
-     * @param {string} period - Periodo de proyección
+     * @param {number} horizon - Número de periodos a proyectar
      * @param {string} method - Método de proyección
      * @returns {Array} - Datos de la proyección
      */
-    calculateProjection(data, period, method) {
+    calculateProjection(data, horizon, method) {
         // Verificar si la biblioteca está cargada
         if (!this.timeSeriesLoaded && method !== 'linear') {
             this.setMessage('Biblioteca de series temporales aún no cargada. Usando tendencia lineal como alternativa.', true);
@@ -1562,72 +1630,9 @@ class StockApp {
         const lastPoint = data[data.length - 1];
         const lastDate = new Date(lastPoint.date);
         
-        // Determinar cuántos puntos generar según el periodo
-        let pointsToGenerate = 0;
+        // El horizonte ya viene como número directamente
+        const pointsToGenerate = horizon;
         let intervalDays = 0;
-        
-        // Determinar el tipo de frecuencia de datos basado en los intervalos observados
-        let dataFrequency = 'diario'; // por defecto asumimos datos diarios
-        
-        if (data.length > 5) {
-            // Calcular la mediana de los intervalos entre los últimos 6 puntos para mayor robustez
-            const intervals = [];
-            for (let i = data.length - 1; i >= data.length - 5; i--) {
-                if (i > 0) {
-                    const date1 = new Date(data[i].date);
-                    const date2 = new Date(data[i-1].date);
-                    const diffDays = Math.round((date1 - date2) / (1000 * 60 * 60 * 24));
-                    intervals.push(Math.max(1, diffDays));
-                }
-            }
-            
-            // Ordenar y tomar el valor central (mediana)
-            intervals.sort((a, b) => a - b);
-            const medianInterval = intervals[Math.floor(intervals.length / 2)];
-            
-            // Determinar la frecuencia basada en el intervalo mediano
-            if (medianInterval >= 28) {
-                dataFrequency = 'mensual';
-            } else if (medianInterval >= 5) {
-                dataFrequency = 'semanal';
-            }
-            
-            console.log(`Frecuencia detectada: ${dataFrequency} (intervalo mediano: ${medianInterval} días)`);
-        }
-        
-        // Determinar los puntos a generar según la frecuencia de los datos y el período seleccionado
-        switch (dataFrequency) {
-            case 'diario':
-                // Para datos diarios: de 1 a 90 días
-                pointsToGenerate = 90;
-                intervalDays = 1;
-                break;
-                
-            case 'semanal':
-                // Para datos semanales: de 1 a 8 semanas
-                pointsToGenerate = 8;
-                intervalDays = 7;
-                break;
-                
-            case 'mensual':
-                // Para datos mensuales: de 1 a 3 meses
-                pointsToGenerate = 3;
-                intervalDays = 30;
-                break;
-                
-            default:
-                // Valor por defecto si no podemos determinar la frecuencia
-                pointsToGenerate = 30;
-                intervalDays = 1;
-        }
-        
-        // Ajustar los puntos a generar basándose en los datos históricos disponibles
-        // No tiene sentido generar muchos más puntos que los datos históricos disponibles
-        const maxPoints = Math.max(30, Math.min(pointsToGenerate, Math.ceil(data.length * 0.75)));
-        if (maxPoints < pointsToGenerate) {
-            console.log(`Ajustando puntos a generar de ${pointsToGenerate} a ${maxPoints} basado en datos históricos disponibles`);
-            pointsToGenerate = maxPoints;
-        }
         
         // Calcular el intervalo basado en los datos existentes de manera más robusta
         // Si los datos son diarios, semanales o mensuales
@@ -1648,6 +1653,7 @@ class StockApp {
             // Ordenar y tomar el valor central (mediana)
             intervals.sort((a, b) => a - b);
             actualInterval = intervals[Math.floor(intervals.length / 2)];
+            intervalDays = actualInterval;
         } else if (data.length > 1) {
             // Si hay pocos puntos, usar la media de todos los intervalos disponibles
             let totalDiff = 0;
@@ -1662,19 +1668,12 @@ class StockApp {
             }
             
             actualInterval = Math.round(totalDiff / count);
+            intervalDays = actualInterval;
+        } else {
+            intervalDays = 7; // Valor por defecto
         }
         
-        // Determinar si debemos usar el intervalo calculado o mantener el predefinido
-        // Si el intervalo calculado es similar al predefinido (±1 día), mantener el predefinido
-        // para alinear mejor con las expectativas del usuario según el período seleccionado
-        if (Math.abs(actualInterval - intervalDays) <= 1) {
-            // Mantener intervalDays como está (no lo cambiamos)
-            console.log(`Manteniendo intervalo predefinido: ${intervalDays} días`);
-        } else {
-            // Usar el intervalo calculado
-            console.log(`Cambiando intervalo de ${intervalDays} a ${actualInterval} días según los datos`);
-            intervalDays = actualInterval;
-        }
+        console.log(`Proyección: horizonte=${pointsToGenerate} periodos, intervalo=${intervalDays} días`);
         
         // Obtener los parámetros del modelo desde la entrada
         const paramsInput = document.getElementById('model-params').value.trim();
@@ -1688,7 +1687,7 @@ class StockApp {
         let projectedPrices = [];
         
         // Registrar información de la proyección para depuración
-        console.log(`Proyección: método=${method}, periodo=${period}, puntos=${pointsToGenerate}, intervalo=${intervalDays} días`);
+        console.log(`Proyección: método=${method}, horizonte=${horizon}, puntos=${pointsToGenerate}, intervalo=${intervalDays} días`);
         console.log(`Datos históricos: ${prices.length} puntos, último=${prices[prices.length-1]}`);
         
         try {
@@ -2256,7 +2255,7 @@ class StockApp {
     }
     
     /**
-     * Agrega las trazas de proyección al gráfico actual
+     * Agrega las trazas de proyección al gráfico actual con intervalos de confianza
      */
     addProjectionToChart() {
         if (!this.showingProjection || Object.keys(this.projectionData).length === 0) {
@@ -2300,6 +2299,7 @@ class StockApp {
             }
             
             const projData = this.projectionData[ticker];
+            const realData = this.currentData[ticker];
             
             // Preparar datos para la traza
             let dates = projData.map(item => item.date);
@@ -2313,8 +2313,20 @@ class StockApp {
                 values = projData.map(item => item.close);
             }
             
+            // Preparar datos históricos para el cálculo de intervalos
+            let historicalValues;
+            if (useBase100 && firstDateValues[ticker]) {
+                const baseValue = firstDateValues[ticker];
+                historicalValues = realData.map(item => (item.close / baseValue) * 100);
+            } else {
+                historicalValues = realData.map(item => item.close);
+            }
+            
+            // Calcular intervalos de confianza
+            const intervalCalculator = new IntervalosConfianza(historicalValues, values);
+            const intervals95 = intervalCalculator.calcularIntervaloVolatilidad(20, 0.95);
+            
             // Agregar el último punto de los datos reales para unir las series
-            const realData = this.currentData[ticker];
             if (realData && realData.length > 0) {
                 const lastRealPoint = realData[realData.length - 1];
                 dates = [lastRealPoint.date, ...dates];
@@ -2327,7 +2339,27 @@ class StockApp {
                 }
                 
                 values = [lastValue, ...values];
+                intervals95.superior = [lastValue, ...intervals95.superior];
+                intervals95.inferior = [lastValue, ...intervals95.inferior];
             }
+            
+            const color = projectionColors[index % projectionColors.length];
+            
+            // Crear área de relleno para intervalo de confianza
+            const confidenceTrace = {
+                x: [...dates, ...dates.slice().reverse()],
+                y: [...intervals95.superior, ...intervals95.inferior.slice().reverse()],
+                fill: 'toself',
+                fillcolor: this.hexToRgba(color, 0.2),
+                type: 'scatter',
+                mode: 'none',
+                name: `${ticker} IC 95%`,
+                showlegend: true,
+                legendgroup: ticker,
+                hoverinfo: 'skip'
+            };
+            
+            projectionTraces.push(confidenceTrace);
             
             // Crear traza para la proyección
             const trace = {
@@ -2336,7 +2368,7 @@ class StockApp {
                 type: 'scatter',
                 mode: 'lines',
                 line: {
-                    color: projectionColors[index % projectionColors.length],
+                    color: color,
                     width: 2,
                     dash: 'dashdot'
                 },
@@ -2352,6 +2384,124 @@ class StockApp {
         if (projectionTraces.length > 0) {
             Plotly.addTraces(chartContainer, projectionTraces);
         }
+    }
+    
+    /**
+     * Convierte color hexadecimal a RGBA
+     * @param {string} hex - Color en formato hexadecimal
+     * @param {number} alpha - Valor de transparencia (0-1)
+     * @returns {string} - Color en formato RGBA
+     */
+    hexToRgba(hex, alpha = 1) {
+        // Eliminar el # si existe
+        hex = hex.replace('#', '');
+        
+        // Convertir a RGB
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+        
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+}
+
+/**
+ * Clase para calcular intervalos de confianza en predicciones de series temporales
+ */
+class IntervalosConfianza {
+    constructor(datosHistoricos, predicciones) {
+        this.datosHistoricos = Array.isArray(datosHistoricos) ? datosHistoricos : [];
+        this.predicciones = Array.isArray(predicciones) ? predicciones : [];
+    }
+    
+    /**
+     * Calcula intervalos de confianza usando desviación estándar
+     */
+    calcularIntervaloDesviacionEstandar(nivelConfianza = 0.95) {
+        if (this.datosHistoricos.length === 0 || this.predicciones.length === 0) {
+            return { superior: [], inferior: [] };
+        }
+        
+        // Calcular estadísticas de los datos históricos
+        const media = this.datosHistoricos.reduce((sum, val) => sum + val, 0) / this.datosHistoricos.length;
+        const varianza = this.datosHistoricos.reduce((sum, val) => sum + Math.pow(val - media, 2), 0) / this.datosHistoricos.length;
+        const desviacionEstandar = Math.sqrt(varianza);
+        
+        // Factor Z para el nivel de confianza
+        const factorZ = this.obtenerFactorZ(nivelConfianza);
+        
+        // Calcular intervalos
+        const intervalos = { superior: [], inferior: [] };
+        
+        this.predicciones.forEach((prediccion, i) => {
+            // El error aumenta con el horizonte
+            const factorExpansion = Math.sqrt(i + 1);
+            const margen = factorZ * desviacionEstandar * factorExpansion;
+            
+            intervalos.superior.push(prediccion + margen);
+            intervalos.inferior.push(Math.max(0, prediccion - margen)); // Evitar valores negativos
+        });
+        
+        return intervalos;
+    }
+    
+    /**
+     * Calcula intervalos de confianza basados en volatilidad
+     */
+    calcularIntervaloVolatilidad(ventanaVolatilidad = 20, nivelConfianza = 0.95) {
+        if (this.datosHistoricos.length < 2 || this.predicciones.length === 0) {
+            return this.calcularIntervaloDesviacionEstandar(nivelConfianza);
+        }
+        
+        // Calcular rendimientos
+        const rendimientos = [];
+        for (let i = 1; i < this.datosHistoricos.length; i++) {
+            const rendimiento = (this.datosHistoricos[i] / this.datosHistoricos[i - 1]) - 1;
+            rendimientos.push(rendimiento);
+        }
+        
+        // Calcular volatilidad en la ventana reciente
+        const ventana = Math.min(ventanaVolatilidad, rendimientos.length);
+        const rendimientosRecientes = rendimientos.slice(-ventana);
+        
+        const mediaRendimientos = rendimientosRecientes.reduce((sum, r) => sum + r, 0) / rendimientosRecientes.length;
+        const varianzaRendimientos = rendimientosRecientes.reduce((sum, r) => sum + Math.pow(r - mediaRendimientos, 2), 0) / rendimientosRecientes.length;
+        const volatilidad = Math.sqrt(varianzaRendimientos);
+        
+        // Factor Z para el nivel de confianza
+        const factorZ = this.obtenerFactorZ(nivelConfianza);
+        
+        // Calcular intervalos
+        const intervalos = { superior: [], inferior: [] };
+        
+        this.predicciones.forEach((prediccion, i) => {
+            // El intervalo se basa en la volatilidad y el horizonte
+            const factorHorizonte = Math.sqrt(i + 1);
+            const margen = prediccion * volatilidad * factorZ * factorHorizonte;
+            
+            intervalos.superior.push(prediccion + margen);
+            intervalos.inferior.push(Math.max(0, prediccion - margen)); // Evitar valores negativos
+        });
+        
+        return intervalos;
+    }
+    
+    /**
+     * Obtiene el factor Z para un nivel de confianza
+     */
+    obtenerFactorZ(nivelConfianza) {
+        const factoresZ = {
+            0.80: 1.282,
+            0.85: 1.440,
+            0.90: 1.645,
+            0.95: 1.960,
+            0.975: 2.241,
+            0.99: 2.576,
+            0.995: 2.807,
+            0.999: 3.291
+        };
+        
+        return factoresZ[nivelConfianza] || 1.96; // Default 95%
     }
 }
 

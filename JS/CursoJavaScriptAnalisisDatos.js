@@ -144,14 +144,30 @@ class YahooFinanceAPI {
     /**
      * Obtiene datos históricos para un símbolo
      * @param {string} symbol - Símbolo del ticker (ej: AAPL, MSFT)
-     * @param {string} interval - Intervalo de tiempo (1d, 1wk, 1mo)
-     * @param {string} range - Rango de tiempo (1mo, 3mo, 6mo, 1y, 5y, max)
+     * @param {string} interval - Intervalo de tiempo (1d=diario, 1wk=semanal, 1mo=mensual)
+     * @param {string} range - Rango de tiempo (3mo, 6mo, 1y, 5y)
      * @returns {Promise<Array>} - Datos históricos formateados
      */
     async obtenerDatosHistoricos(symbol, interval = '1d', range = '1y') {
+        // Validar parámetros
+        const intervalosValidos = ['1d', '1wk', '1mo'];
+        const rangosValidos = ['3mo', '6mo', '1y', '5y'];
+        
+        if (!intervalosValidos.includes(interval)) {
+            console.warn(`Intervalo '${interval}' no válido. Usando '1d' por defecto.`);
+            interval = '1d';
+        }
+        
+        if (!rangosValidos.includes(range)) {
+            console.warn(`Rango '${range}' no válido. Usando '1y' por defecto.`);
+            range = '1y';
+        }
+        
         try {
             // Construir la URL para la API no oficial de Yahoo Finance
             const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}`;
+            
+            console.log(`Obteniendo datos para ${symbol} - Periodo: ${this.traducirPeriodo(interval)}, Rango: ${this.traducirRango(range)}`);
             
             // Usar un proxy CORS para evitar problemas de acceso desde el navegador
             const proxyUrl = `https://cors-anywhere.herokuapp.com/${url}`;
@@ -177,6 +193,35 @@ class YahooFinanceAPI {
             // Intentar con un método alternativo si el principal falla
             return this.metodoAlternativo(symbol, interval, range);
         }
+    }
+    
+    /**
+     * Traduce el código de periodo a texto legible
+     * @param {string} interval - Código de intervalo
+     * @returns {string} - Descripción del periodo
+     */
+    traducirPeriodo(interval) {
+        const traducciones = {
+            '1d': 'Diario',
+            '1wk': 'Semanal',
+            '1mo': 'Mensual'
+        };
+        return traducciones[interval] || interval;
+    }
+    
+    /**
+     * Traduce el código de rango a texto legible
+     * @param {string} range - Código de rango
+     * @returns {string} - Descripción del rango
+     */
+    traducirRango(range) {
+        const traducciones = {
+            '3mo': '3 meses',
+            '6mo': '6 meses',
+            '1y': '1 año',
+            '5y': '5 años'
+        };
+        return traducciones[range] || range;
     }
     
     /**
@@ -1110,6 +1155,255 @@ class ModelosSeriesTemporales {
 
 /**
  * ============================================================================
+ * PARTE 4.5: CÁLCULO DE INTERVALOS DE CONFIANZA PARA PREDICCIONES
+ * ============================================================================
+ */
+
+/**
+ * Clase para calcular intervalos de confianza en predicciones de series temporales
+ */
+class IntervalosConfianza {
+    /**
+     * Constructor
+     * @param {Array} datosHistoricos - Datos históricos para calcular estadísticas
+     * @param {Array} predicciones - Predicciones del modelo
+     */
+    constructor(datosHistoricos, predicciones) {
+        this.datosHistoricos = datosHistoricos;
+        this.predicciones = predicciones;
+        
+        // Extraer valores si los datos son objetos
+        this.valoresHistoricos = Array.isArray(datosHistoricos) ? 
+            (typeof datosHistoricos[0] === 'object' ? datosHistoricos.map(d => d.cierre || d.valor || d) : datosHistoricos) : 
+            [];
+    }
+    
+    /**
+     * Calcula intervalos de confianza usando desviación estándar de residuos
+     * @param {number} nivelConfianza - Nivel de confianza (ej: 0.95 para 95%)
+     * @returns {Object} - Objeto con límites superior e inferior
+     */
+    calcularIntervaloDesviacionEstandar(nivelConfianza = 0.95) {
+        if (this.valoresHistoricos.length === 0 || this.predicciones.length === 0) {
+            console.error('No hay suficientes datos para calcular intervalos');
+            return { superior: [], inferior: [] };
+        }
+        
+        // Calcular la desviación estándar de los datos históricos
+        const media = this.valoresHistoricos.reduce((sum, val) => sum + val, 0) / this.valoresHistoricos.length;
+        const sumaCuadrados = this.valoresHistoricos.reduce((sum, val) => sum + Math.pow(val - media, 2), 0);
+        const desviacionEstandar = Math.sqrt(sumaCuadrados / this.valoresHistoricos.length);
+        
+        // Calcular el factor Z para el nivel de confianza
+        // Para 95%, Z ≈ 1.96; para 99%, Z ≈ 2.576
+        const factorZ = this.obtenerFactorZ(nivelConfianza);
+        
+        // Calcular intervalos para cada predicción
+        // El intervalo se expande con el horizonte de predicción
+        const intervalos = {
+            superior: [],
+            inferior: []
+        };
+        
+        this.predicciones.forEach((prediccion, i) => {
+            // El error aumenta con el horizonte (factor de expansión)
+            const factorExpansion = Math.sqrt(i + 1);
+            const margen = factorZ * desviacionEstandar * factorExpansion;
+            
+            intervalos.superior.push(prediccion + margen);
+            intervalos.inferior.push(prediccion - margen);
+        });
+        
+        return intervalos;
+    }
+    
+    /**
+     * Calcula intervalos de confianza usando método Bootstrap
+     * @param {number} nivelConfianza - Nivel de confianza (ej: 0.95 para 95%)
+     * @param {number} numIteraciones - Número de iteraciones Bootstrap
+     * @returns {Object} - Objeto con límites superior e inferior
+     */
+    calcularIntervaloBootstrap(nivelConfianza = 0.95, numIteraciones = 1000) {
+        if (this.valoresHistoricos.length === 0 || this.predicciones.length === 0) {
+            console.error('No hay suficientes datos para calcular intervalos');
+            return { superior: [], inferior: [] };
+        }
+        
+        // Calcular residuos históricos (diferencias entre valores consecutivos)
+        const residuos = [];
+        for (let i = 1; i < this.valoresHistoricos.length; i++) {
+            residuos.push(this.valoresHistoricos[i] - this.valoresHistoricos[i - 1]);
+        }
+        
+        // Para cada punto de predicción, generar distribución Bootstrap
+        const intervalos = {
+            superior: [],
+            inferior: []
+        };
+        
+        this.predicciones.forEach((prediccion, horizonte) => {
+            const simulaciones = [];
+            
+            // Realizar múltiples simulaciones Bootstrap
+            for (let iter = 0; iter < numIteraciones; iter++) {
+                let valorSimulado = prediccion;
+                
+                // Añadir residuos aleatorios para simular incertidumbre
+                for (let h = 0; h <= horizonte; h++) {
+                    const residuoAleatorio = residuos[Math.floor(Math.random() * residuos.length)];
+                    valorSimulado += residuoAleatorio * Math.random();
+                }
+                
+                simulaciones.push(valorSimulado);
+            }
+            
+            // Ordenar simulaciones y calcular percentiles
+            simulaciones.sort((a, b) => a - b);
+            
+            const alpha = 1 - nivelConfianza;
+            const indiceLimiteInferior = Math.floor(simulaciones.length * (alpha / 2));
+            const indiceLimiteSuperior = Math.floor(simulaciones.length * (1 - alpha / 2));
+            
+            intervalos.inferior.push(simulaciones[indiceLimiteInferior]);
+            intervalos.superior.push(simulaciones[indiceLimiteSuperior]);
+        });
+        
+        return intervalos;
+    }
+    
+    /**
+     * Calcula intervalos de confianza usando percentiles de error histórico
+     * @param {Array} erroresHistoricos - Errores de predicciones anteriores
+     * @param {number} nivelConfianza - Nivel de confianza (ej: 0.95 para 95%)
+     * @returns {Object} - Objeto con límites superior e inferior
+     */
+    calcularIntervaloPercentiles(erroresHistoricos, nivelConfianza = 0.95) {
+        if (!erroresHistoricos || erroresHistoricos.length === 0) {
+            console.warn('No hay errores históricos, usando método de desviación estándar');
+            return this.calcularIntervaloDesviacionEstandar(nivelConfianza);
+        }
+        
+        // Ordenar errores históricos
+        const erroresOrdenados = [...erroresHistoricos].sort((a, b) => a - b);
+        
+        // Calcular percentiles
+        const alpha = 1 - nivelConfianza;
+        const indiceLimiteInferior = Math.floor(erroresOrdenados.length * (alpha / 2));
+        const indiceLimiteSuperior = Math.floor(erroresOrdenados.length * (1 - alpha / 2));
+        
+        const errorInferior = erroresOrdenados[indiceLimiteInferior];
+        const errorSuperior = erroresOrdenados[indiceLimiteSuperior];
+        
+        // Aplicar a las predicciones
+        const intervalos = {
+            superior: this.predicciones.map((pred, i) => pred + errorSuperior * Math.sqrt(i + 1)),
+            inferior: this.predicciones.map((pred, i) => pred + errorInferior * Math.sqrt(i + 1))
+        };
+        
+        return intervalos;
+    }
+    
+    /**
+     * Calcula intervalos de confianza dinámicos basados en volatilidad
+     * @param {number} ventanaVolatilidad - Tamaño de ventana para calcular volatilidad
+     * @param {number} nivelConfianza - Nivel de confianza (ej: 0.95 para 95%)
+     * @returns {Object} - Objeto con límites superior e inferior
+     */
+    calcularIntervaloVolatilidad(ventanaVolatilidad = 20, nivelConfianza = 0.95) {
+        if (this.valoresHistoricos.length < ventanaVolatilidad) {
+            console.warn('Datos insuficientes para calcular volatilidad, usando método estándar');
+            return this.calcularIntervaloDesviacionEstandar(nivelConfianza);
+        }
+        
+        // Calcular volatilidad (desviación estándar de rendimientos)
+        const rendimientos = [];
+        for (let i = 1; i < this.valoresHistoricos.length; i++) {
+            const rendimiento = (this.valoresHistoricos[i] / this.valoresHistoricos[i - 1]) - 1;
+            rendimientos.push(rendimiento);
+        }
+        
+        // Calcular volatilidad en ventana reciente
+        const rendimientosRecientes = rendimientos.slice(-ventanaVolatilidad);
+        const mediaRendimientos = rendimientosRecientes.reduce((sum, r) => sum + r, 0) / rendimientosRecientes.length;
+        const varianzaRendimientos = rendimientosRecientes.reduce((sum, r) => sum + Math.pow(r - mediaRendimientos, 2), 0) / rendimientosRecientes.length;
+        const volatilidad = Math.sqrt(varianzaRendimientos);
+        
+        // Factor Z para el nivel de confianza
+        const factorZ = this.obtenerFactorZ(nivelConfianza);
+        
+        // Calcular intervalos basados en volatilidad
+        const intervalos = {
+            superior: [],
+            inferior: []
+        };
+        
+        const ultimoValor = this.valoresHistoricos[this.valoresHistoricos.length - 1];
+        
+        this.predicciones.forEach((prediccion, i) => {
+            // El intervalo se basa en la volatilidad y el horizonte
+            const factorHorizonte = Math.sqrt(i + 1);
+            const margen = prediccion * volatilidad * factorZ * factorHorizonte;
+            
+            intervalos.superior.push(prediccion + margen);
+            intervalos.inferior.push(prediccion - margen);
+        });
+        
+        return intervalos;
+    }
+    
+    /**
+     * Obtiene el factor Z para un nivel de confianza dado
+     * @private
+     * @param {number} nivelConfianza - Nivel de confianza (0-1)
+     * @returns {number} - Factor Z correspondiente
+     */
+    obtenerFactorZ(nivelConfianza) {
+        // Aproximaciones comunes de Z
+        const factoresZ = {
+            0.80: 1.282,
+            0.85: 1.440,
+            0.90: 1.645,
+            0.95: 1.960,
+            0.975: 2.241,
+            0.99: 2.576,
+            0.995: 2.807,
+            0.999: 3.291
+        };
+        
+        // Buscar el factor Z más cercano
+        return factoresZ[nivelConfianza] || 1.96; // Default 95%
+    }
+    
+    /**
+     * Método combinado que usa múltiples enfoques para calcular intervalos
+     * @param {Object} opciones - Opciones de configuración
+     * @returns {Object} - Intervalos de confianza combinados
+     */
+    calcularIntervalosRobustos(opciones = {}) {
+        const nivelConfianza = opciones.nivelConfianza || 0.95;
+        
+        // Calcular usando diferentes métodos
+        const intervaloSD = this.calcularIntervaloDesviacionEstandar(nivelConfianza);
+        const intervaloVolatilidad = this.calcularIntervaloVolatilidad(opciones.ventanaVolatilidad || 20, nivelConfianza);
+        
+        // Combinar resultados (promedio ponderado)
+        const intervalos = {
+            superior: [],
+            inferior: []
+        };
+        
+        for (let i = 0; i < this.predicciones.length; i++) {
+            // Promedio de los dos métodos
+            intervalos.superior.push((intervaloSD.superior[i] + intervaloVolatilidad.superior[i]) / 2);
+            intervalos.inferior.push((intervaloSD.inferior[i] + intervaloVolatilidad.inferior[i]) / 2);
+        }
+        
+        return intervalos;
+    }
+}
+
+/**
+ * ============================================================================
  * PARTE 5: VISUALIZACIÓN DE DATOS CON PLOTLY.JS
  * ============================================================================
  */
@@ -1273,6 +1567,182 @@ class VisualizadorFinanciero {
         
         // Añadir la nueva traza al gráfico
         Plotly.addTraces(this.contenedorId, trace);
+    }
+    
+    /**
+     * Agrega intervalos de confianza al gráfico de predicciones
+     * @param {Array} predicciones - Array de predicciones
+     * @param {Object} intervalos - Objeto con propiedades 'superior' e 'inferior'
+     * @param {string} nombre - Nombre base para la leyenda
+     * @param {Object} opciones - Opciones de configuración
+     */
+    agregarIntervalosConfianza(predicciones, intervalos, nombre = 'Predicción', opciones = {}) {
+        if (!this.plotlyDisponible || !predicciones || !intervalos) {
+            console.error('No se pueden agregar intervalos: datos insuficientes');
+            return;
+        }
+        
+        // Obtener el elemento del gráfico
+        const grafico = document.getElementById(this.contenedorId);
+        if (!grafico || !grafico.data) {
+            console.error('Gráfico no encontrado o no inicializado');
+            return;
+        }
+        
+        // Configurar opciones por defecto
+        const color = opciones.color || '#2196F3';
+        const colorFill = opciones.colorFill || color;
+        const opacidad = opciones.opacidad || 0.2;
+        const mostrarLineas = opciones.mostrarLineas !== false;
+        const nivelConfianza = opciones.nivelConfianza || 95;
+        
+        // Preparar fechas
+        let fechas;
+        if (typeof predicciones[0] === 'object') {
+            fechas = predicciones.map(d => d.fecha);
+        } else {
+            const ultimaFecha = new Date(grafico.data[0].x[grafico.data[0].x.length - 1]);
+            fechas = predicciones.map((_, i) => {
+                const fecha = new Date(ultimaFecha);
+                fecha.setDate(fecha.getDate() + i + 1);
+                return fecha.toISOString().split('T')[0];
+            });
+        }
+        
+        // Agregar el último punto real para unir la predicción
+        const ultimoX = grafico.data[0].x[grafico.data[0].x.length - 1];
+        const ultimoY = grafico.data[0].close[grafico.data[0].close.length - 1];
+        
+        // Preparar arrays para el área de relleno
+        const fechasCompletas = [ultimoX, ...fechas];
+        const limiteSupCompleto = [ultimoY, ...intervalos.superior];
+        const limiteInfCompleto = [ultimoY, ...intervalos.inferior];
+        
+        // Crear traza para el límite superior (si se solicita)
+        if (mostrarLineas) {
+            const trazaSuperior = {
+                x: fechasCompletas,
+                y: limiteSupCompleto,
+                type: 'scatter',
+                mode: 'lines',
+                name: `${nombre} (límite superior ${nivelConfianza}%)`,
+                line: {
+                    color: color,
+                    width: 1,
+                    dash: 'dot'
+                },
+                showlegend: false
+            };
+            
+            Plotly.addTraces(this.contenedorId, trazaSuperior);
+        }
+        
+        // Crear traza para el límite inferior (si se solicita)
+        if (mostrarLineas) {
+            const trazaInferior = {
+                x: fechasCompletas,
+                y: limiteInfCompleto,
+                type: 'scatter',
+                mode: 'lines',
+                name: `${nombre} (límite inferior ${nivelConfianza}%)`,
+                line: {
+                    color: color,
+                    width: 1,
+                    dash: 'dot'
+                },
+                showlegend: false
+            };
+            
+            Plotly.addTraces(this.contenedorId, trazaInferior);
+        }
+        
+        // Crear área de relleno entre límites
+        const trazaRelleno = {
+            x: [...fechasCompletas, ...fechasCompletas.slice().reverse()],
+            y: [...limiteSupCompleto, ...limiteInfCompleto.slice().reverse()],
+            fill: 'toself',
+            fillcolor: this.hexToRgba(colorFill, opacidad),
+            type: 'scatter',
+            mode: 'none',
+            name: `Intervalo de confianza ${nivelConfianza}%`,
+            showlegend: true,
+            hoverinfo: 'skip'
+        };
+        
+        Plotly.addTraces(this.contenedorId, trazaRelleno);
+    }
+    
+    /**
+     * Agrega predicción con intervalos de confianza en un solo paso
+     * @param {Array} datosHistoricos - Datos históricos para calcular intervalos
+     * @param {Array} predicciones - Predicciones del modelo
+     * @param {Object} opciones - Opciones de configuración
+     */
+    agregarPrediccionConIntervalos(datosHistoricos, predicciones, opciones = {}) {
+        if (!this.plotlyDisponible) {
+            console.error('Plotly no está disponible');
+            return;
+        }
+        
+        // Configurar opciones por defecto
+        const nombre = opciones.nombre || 'Predicción';
+        const color = opciones.color || '#2196F3';
+        const nivelConfianza = opciones.nivelConfianza || 0.95;
+        const metodo = opciones.metodo || 'desviacionEstandar'; // 'desviacionEstandar', 'volatilidad', 'bootstrap', 'robusto'
+        
+        // Calcular intervalos de confianza
+        const calculador = new IntervalosConfianza(datosHistoricos, predicciones);
+        let intervalos;
+        
+        switch(metodo) {
+            case 'volatilidad':
+                intervalos = calculador.calcularIntervaloVolatilidad(opciones.ventanaVolatilidad || 20, nivelConfianza);
+                break;
+            case 'bootstrap':
+                intervalos = calculador.calcularIntervaloBootstrap(nivelConfianza, opciones.numIteraciones || 1000);
+                break;
+            case 'robusto':
+                intervalos = calculador.calcularIntervalosRobustos({ nivelConfianza, ventanaVolatilidad: opciones.ventanaVolatilidad });
+                break;
+            case 'desviacionEstandar':
+            default:
+                intervalos = calculador.calcularIntervaloDesviacionEstandar(nivelConfianza);
+        }
+        
+        // Agregar intervalos primero (para que queden detrás)
+        this.agregarIntervalosConfianza(predicciones, intervalos, nombre, {
+            color: color,
+            colorFill: color,
+            opacidad: opciones.opacidad || 0.2,
+            mostrarLineas: opciones.mostrarLineasLimite !== false,
+            nivelConfianza: Math.round(nivelConfianza * 100)
+        });
+        
+        // Agregar línea de predicción
+        this.agregarPrediccion(predicciones, nombre, {
+            color: color,
+            tipoLinea: opciones.tipoLinea || 'dash',
+            grosor: opciones.grosor || 2
+        });
+    }
+    
+    /**
+     * Convierte color hexadecimal a RGBA
+     * @private
+     * @param {string} hex - Color en formato hexadecimal
+     * @param {number} alpha - Valor de transparencia (0-1)
+     * @returns {string} - Color en formato RGBA
+     */
+    hexToRgba(hex, alpha = 1) {
+        // Eliminar el # si existe
+        hex = hex.replace('#', '');
+        
+        // Convertir a RGB
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+        
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
     
     /**
@@ -1477,17 +1947,161 @@ async function iniciarAnalisis() {
         console.log('Aplicando modelo ARIMA...');
         const prediccionARIMA = modelador.modeloARIMA(datosAAPL, {p: 5, d: 1, q: 1}, 30);
         
-        // 4.2. Visualizar predicción
+        // 4.2. Visualizar predicción con intervalos de confianza
+        // Método 1: Agregar predicción con intervalos calculados automáticamente
+        visualizador.agregarPrediccionConIntervalos(datosAAPL, prediccionARIMA, {
+            nombre: 'Predicción ARIMA (30 días)',
+            color: '#FF9800',
+            tipoLinea: 'dashdot',
+            grosor: 3,
+            nivelConfianza: 0.95, // 95% de confianza
+            metodo: 'volatilidad', // Opciones: 'desviacionEstandar', 'volatilidad', 'bootstrap', 'robusto'
+            opacidad: 0.2,
+            mostrarLineasLimite: true
+        });
+        
+        // Método 2 (alternativo): Calcular intervalos manualmente y agregarlos por separado
+        /*
+        const calculadorIntervalos = new IntervalosConfianza(datosAAPL, prediccionARIMA);
+        
+        // Calcular intervalos con diferentes métodos
+        const intervalos95 = calculadorIntervalos.calcularIntervaloDesviacionEstandar(0.95);
+        const intervalos99 = calculadorIntervalos.calcularIntervaloVolatilidad(20, 0.99);
+        
+        // Agregar intervalo del 99% (más amplio, detrás)
+        visualizador.agregarIntervalosConfianza(prediccionARIMA, intervalos99, 'Predicción ARIMA', {
+            color: '#FFB74D',
+            opacidad: 0.1,
+            mostrarLineas: false,
+            nivelConfianza: 99
+        });
+        
+        // Agregar intervalo del 95% (más estrecho, adelante)
+        visualizador.agregarIntervalosConfianza(prediccionARIMA, intervalos95, 'Predicción ARIMA', {
+            color: '#FF9800',
+            opacidad: 0.2,
+            mostrarLineas: true,
+            nivelConfianza: 95
+        });
+        
+        // Agregar línea de predicción
         visualizador.agregarPrediccion(prediccionARIMA, 'Predicción ARIMA (30 días)', {
             color: '#FF9800',
             tipoLinea: 'dashdot',
             grosor: 3
         });
+        */
         
         console.log('Análisis completado con éxito');
+        console.log('Intervalos de confianza agregados al gráfico');
     } catch (error) {
         console.error('Error durante el análisis:', error);
     }
+}
+
+/**
+ * ============================================================================
+ * EJEMPLOS DE USO DE INTERVALOS DE CONFIANZA
+ * ============================================================================
+ */
+
+/**
+ * Ejemplo 1: Intervalos de confianza con desviación estándar
+ */
+function ejemploIntervalosDesviacionEstandar() {
+    // Datos históricos de ejemplo
+    const datosHistoricos = [100, 102, 101, 103, 105, 104, 106, 108, 107, 109];
+    
+    // Predicciones de ejemplo
+    const predicciones = [110, 111, 112, 113, 114];
+    
+    // Calcular intervalos
+    const calculador = new IntervalosConfianza(datosHistoricos, predicciones);
+    const intervalos95 = calculador.calcularIntervaloDesviacionEstandar(0.95);
+    
+    console.log('Predicciones:', predicciones);
+    console.log('Límite superior (95%):', intervalos95.superior);
+    console.log('Límite inferior (95%):', intervalos95.inferior);
+}
+
+/**
+ * Ejemplo 2: Intervalos de confianza con volatilidad
+ */
+function ejemploIntervalosVolatilidad() {
+    // Supongamos que tenemos datos históricos de precios
+    const yahooAPI = new YahooFinanceAPI();
+    
+    yahooAPI.obtenerDatosHistoricos('AAPL', '1d', '1y').then(datos => {
+        // Crear modelo y hacer predicción
+        const modelador = new ModelosSeriesTemporales(datos);
+        const predicciones = modelador.modeloARIMA(datos, {p: 5, d: 1, q: 1}, 30);
+        
+        // Calcular intervalos usando volatilidad
+        const calculador = new IntervalosConfianza(datos, predicciones);
+        const intervalosVolatilidad = calculador.calcularIntervaloVolatilidad(20, 0.95);
+        
+        // Visualizar
+        const visualizador = new VisualizadorFinanciero('grafico');
+        visualizador.crearGraficoVelas(datos, 'Apple - Predicción con Intervalos de Confianza');
+        visualizador.agregarPrediccionConIntervalos(datos, predicciones, {
+            nombre: 'Predicción 30 días',
+            color: '#4CAF50',
+            metodo: 'volatilidad',
+            nivelConfianza: 0.95
+        });
+    });
+}
+
+/**
+ * Ejemplo 3: Múltiples niveles de confianza
+ */
+function ejemploMultiplesIntervalos() {
+    const yahooAPI = new YahooFinanceAPI();
+    
+    yahooAPI.obtenerDatosHistoricos('TSLA', '1d', '6mo').then(datos => {
+        const modelador = new ModelosSeriesTemporales(datos);
+        const predicciones = modelador.modeloARIMA(datos, {p: 3, d: 1, q: 2}, 20);
+        
+        const calculador = new IntervalosConfianza(datos, predicciones);
+        
+        // Calcular múltiples niveles de confianza
+        const intervalos80 = calculador.calcularIntervaloVolatilidad(20, 0.80);
+        const intervalos95 = calculador.calcularIntervaloVolatilidad(20, 0.95);
+        const intervalos99 = calculador.calcularIntervaloVolatilidad(20, 0.99);
+        
+        // Visualizar
+        const visualizador = new VisualizadorFinanciero('grafico');
+        visualizador.crearGraficoVelas(datos, 'Tesla - Múltiples Niveles de Confianza');
+        
+        // Agregar intervalos de más amplio a más estrecho
+        visualizador.agregarIntervalosConfianza(predicciones, intervalos99, 'Predicción', {
+            color: '#E3F2FD',
+            opacidad: 0.3,
+            mostrarLineas: false,
+            nivelConfianza: 99
+        });
+        
+        visualizador.agregarIntervalosConfianza(predicciones, intervalos95, 'Predicción', {
+            color: '#90CAF9',
+            opacidad: 0.4,
+            mostrarLineas: false,
+            nivelConfianza: 95
+        });
+        
+        visualizador.agregarIntervalosConfianza(predicciones, intervalos80, 'Predicción', {
+            color: '#42A5F5',
+            opacidad: 0.5,
+            mostrarLineas: true,
+            nivelConfianza: 80
+        });
+        
+        // Agregar línea de predicción
+        visualizador.agregarPrediccion(predicciones, 'Predicción ARIMA', {
+            color: '#1976D2',
+            tipoLinea: 'solid',
+            grosor: 3
+        });
+    });
 }
 
 // Ejemplo de uso - Para ejecutar cuando se cargue el documento

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prueba Rápida - Selector de Datos</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .control-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: inline-block;
+            width: 150px;
+            font-weight: bold;
+        }
+        input, select {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background-color: #0d47a1;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #1565c0;
+        }
+        .info {
+            background-color: #e8f4fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        #output {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            min-height: 100px;
+            margin-top: 20px;
+        }
+        .grafico {
+            width: 100%;
+            height: 500px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 Prueba Rápida - Análisis de Datos Financieros</h1>
+    
+    <div class="control-panel">
+        <h2>Configuración de Datos</h2>
+        
+        <div class="control-group">
+            <label for="ticker">Ticker:</label>
+            <input type="text" id="ticker" value="AAPL" placeholder="Ej: TSLA, NVDA, META">
+            <small>(Símbolo bursátil)</small>
+        </div>
+        
+        <div class="control-group">
+            <label for="periodo">Periodo:</label>
+            <select id="periodo">
+                <option value="1d" selected>📊 Diario (1d)</option>
+                <option value="1wk">📈 Semanal (1wk)</option>
+                <option value="1mo">📉 Mensual (1mo)</option>
+            </select>
+        </div>
+        
+        <div class="control-group">
+            <label for="rango">Rango histórico:</label>
+            <select id="rango">
+                <option value="3mo" selected>⏰ 3 meses</option>
+                <option value="6mo">⏳ 6 meses</option>
+                <option value="1y">📅 1 año</option>
+                <option value="5y">🗓️ 5 años</option>
+            </select>
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <button onclick="cargarBibliotecas()">1️⃣ Cargar Bibliotecas</button>
+            <button onclick="obtenerDatos()">2️⃣ Obtener Datos</button>
+            <button onclick="crearGrafico()">3️⃣ Crear Gráfico</button>
+        </div>
+    </div>
+    
+    <div class="info">
+        <h3>ℹ️ Instrucciones:</h3>
+        <ol>
+            <li><strong>Cargar Bibliotecas:</strong> Primero carga Plotly.js y otras dependencias</li>
+            <li><strong>Configurar:</strong> Selecciona ticker, periodo y rango histórico</li>
+            <li><strong>Obtener Datos:</strong> Descarga los datos de Yahoo Finance</li>
+            <li><strong>Visualizar:</strong> Crea gráficos y análisis</li>
+        </ol>
+    </div>
+    
+    <div id="output"></div>
+    <div id="grafico" class="grafico"></div>
+    
+    <!-- Cargar el script principal -->
+    <script src="CursoJavaScriptAnalisisDatos.js"></script>
+    
+    <script>
+        let bibliotecasCargadas = false;
+        let datosActuales = null;
+        let yahooAPI = null;
+        
+        async function cargarBibliotecas() {
+            const output = document.getElementById('output');
+            output.innerHTML = '<p style="color: #2196F3;">⏳ Cargando bibliotecas...</p>';
+            
+            try {
+                // Función de carga del archivo principal
+                if (typeof cargarBibliotecas !== 'undefined') {
+                    await window.cargarBibliotecas();
+                } else {
+                    // Cargar Plotly manualmente si la función no está disponible
+                    await cargarScript('https://cdn.plot.ly/plotly-latest.min.js');
+                }
+                
+                bibliotecasCargadas = true;
+                yahooAPI = new YahooFinanceAPI();
+                
+                output.innerHTML = '<p style="color: #4CAF50;">✅ Bibliotecas cargadas correctamente</p>';
+            } catch (error) {
+                output.innerHTML = `<p style="color: #F44336;">❌ Error: ${error.message}</p>`;
+            }
+        }
+        
+        function cargarScript(url) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = url;
+                script.onload = resolve;
+                script.onerror = () => reject(new Error(`Error al cargar: ${url}`));
+                document.head.appendChild(script);
+            });
+        }
+        
+        async function obtenerDatos() {
+            if (!bibliotecasCargadas) {
+                alert('⚠️ Primero debes cargar las bibliotecas');
+                return;
+            }
+            
+            const ticker = document.getElementById('ticker').value.toUpperCase() || 'AAPL';
+            const periodo = document.getElementById('periodo').value;
+            const rango = document.getElementById('rango').value;
+            
+            const output = document.getElementById('output');
+            
+            const periodoTexto = yahooAPI.traducirPeriodo(periodo);
+            const rangoTexto = yahooAPI.traducirRango(rango);
+            
+            output.innerHTML = `<p style="color: #2196F3;">⏳ Obteniendo datos de ${ticker} (${periodoTexto}, ${rangoTexto})...</p>`;
+            
+            try {
+                datosActuales = await yahooAPI.obtenerDatosHistoricos(ticker, periodo, rango);
+                
+                output.innerHTML = `
+                    <div style="color: #4CAF50;">
+                        <h3>✅ Datos obtenidos correctamente</h3>
+                        <p><strong>Ticker:</strong> ${ticker}</p>
+                        <p><strong>Periodo:</strong> ${periodoTexto}</p>
+                        <p><strong>Rango:</strong> ${rangoTexto}</p>
+                        <p><strong>Registros:</strong> ${datosActuales.length}</p>
+                        <p><strong>Fechas:</strong> ${datosActuales[0].fecha} a ${datosActuales[datosActuales.length-1].fecha}</p>
+                        <p><strong>Último cierre:</strong> $${datosActuales[datosActuales.length-1].cierre.toFixed(2)}</p>
+                    </div>
+                `;
+            } catch (error) {
+                output.innerHTML = `
+                    <div style="color: #F44336;">
+                        <h3>❌ Error al obtener datos</h3>
+                        <p>${error.message}</p>
+                        <p><small>Nota: Si aparece error CORS, es posible que necesites activar el proxy cors-anywhere</small></p>
+                    </div>
+                `;
+            }
+        }
+        
+        function crearGrafico() {
+            if (!bibliotecasCargadas) {
+                alert('⚠️ Primero debes cargar las bibliotecas');
+                return;
+            }
+            
+            if (!datosActuales) {
+                alert('⚠️ Primero debes obtener los datos');
+                return;
+            }
+            
+            const ticker = document.getElementById('ticker').value.toUpperCase() || 'AAPL';
+            const periodo = document.getElementById('periodo').value;
+            const rango = document.getElementById('rango').value;
+            
+            const periodoTexto = yahooAPI.traducirPeriodo(periodo);
+            const rangoTexto = yahooAPI.traducirRango(rango);
+            
+            try {
+                const visualizador = new VisualizadorFinanciero('grafico');
+                visualizador.crearGraficoVelas(
+                    datosActuales,
+                    `${ticker} - ${periodoTexto}, ${rangoTexto}`
+                );
+                
+                document.getElementById('output').innerHTML += `
+                    <p style="color: #4CAF50;">✅ Gráfico creado correctamente</p>
+                `;
+            } catch (error) {
+                document.getElementById('output').innerHTML += `
+                    <p style="color: #F44336;">❌ Error al crear gráfico: ${error.message}</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
