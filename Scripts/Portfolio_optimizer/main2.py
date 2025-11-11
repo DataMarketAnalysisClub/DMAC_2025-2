@@ -160,16 +160,14 @@ def main():
     print("=" * 60)
     
     # Input tickers
-    print("\nEnter 5 stock tickers (press Enter for defaults: AAPL, GOOGL, MSFT, JPM, JNJ):")
+    print("\nEnter at least 2 stock tickers (press Enter for defaults: AAPL, GOOGL, MSFT, JPM, JNJ):")
     user_input = input("Tickers (comma-separated): ").strip()
     
     if user_input:
         tickers = [t.strip().upper() for t in user_input.split(',')]
-        if len(tickers) != 5:
-            print("Warning: Expected 5 tickers. Using defaults instead.")
-            tickers = ['AAPL', 'GOOGL', 'MSFT', 'NVDA', 'BRK-A']
+
     else:
-        tickers = ['AAPL', 'GOOGL', 'MSFT', 'NVDA', 'BRK-A']
+        tickers = ['AAPL', 'GOOGL', 'MSFT', 'JPM', 'JNJ']
     
     print(f"\nAnalyzing portfolio: {', '.join(tickers)}")
     
