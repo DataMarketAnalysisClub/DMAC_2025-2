@@ -39,18 +39,18 @@ def calculate_returns(prices):
     returns = prices.pct_change(fill_method=None).dropna()
     return returns
 
-def portfolio_stats(weights, mean_returns, cov_matrix, rf_rate=0.03):
+def portfolio_stats(weights, mean_returns, cov_matrix, rf_rate):
     """Calculate portfolio statistics"""
     portfolio_return = np.sum(mean_returns * weights) * 252
     portfolio_std = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))) * np.sqrt(252)
     sharpe_ratio = (portfolio_return - rf_rate) / portfolio_std
     return portfolio_return, portfolio_std, sharpe_ratio
 
-def negative_sharpe(weights, mean_returns, cov_matrix, rf_rate=0.03):
+def negative_sharpe(weights, mean_returns, cov_matrix, rf_rate):
     """Negative Sharpe ratio for minimization"""
     return -portfolio_stats(weights, mean_returns, cov_matrix, rf_rate)[2]
 
-def optimize_portfolio(mean_returns, cov_matrix, rf_rate=0.03):
+def optimize_portfolio(mean_returns, cov_matrix, rf_rate):
     """Find optimal portfolio (max Sharpe ratio)"""
     num_assets = len(mean_returns)
     constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
@@ -63,7 +63,7 @@ def optimize_portfolio(mean_returns, cov_matrix, rf_rate=0.03):
     
     return result.x
 
-def generate_random_portfolios(mean_returns, cov_matrix, num_portfolios=5000, rf_rate=0.03):
+def generate_random_portfolios(mean_returns, cov_matrix, rf_rate, num_portfolios=5000):
     """Generate random portfolios for efficient frontier"""
     num_assets = len(mean_returns)
     results = np.zeros((3, num_portfolios))
@@ -163,13 +163,23 @@ def main():
     print("\nEnter at least 2 stock tickers (press Enter for defaults: AAPL, GOOGL, MSFT, JPM, JNJ):")
     user_input = input("Tickers (comma-separated): ").strip()
     
+    try:
+        rf_input = input("Insert the current risk free return rate (e.g., 0.03 for 3%): ").strip()
+        rf_rate = float(rf_input) if rf_input else 0.03
+    except ValueError:
+        print("Invalid rate, using default: 3%")
+        rf_rate = 0.03
+    
     if user_input:
         tickers = [t.strip().upper() for t in user_input.split(',')]
-
+        if len(tickers) < 2:
+            print("Warning: Need at least 2 tickers. Using defaults instead.")
+            tickers = ['AAPL', 'GOOGL', 'MSFT', 'JPM', 'JNJ']
     else:
         tickers = ['AAPL', 'GOOGL', 'MSFT', 'JPM', 'JNJ']
     
     print(f"\nAnalyzing portfolio: {', '.join(tickers)}")
+    print(f"Risk-free rate: {rf_rate*100:.2f}%")
     
     # Download data
     try:
@@ -187,13 +197,13 @@ def main():
         
         # Optimize portfolio
         print("\nOptimizing portfolio...")
-        optimal_weights = optimize_portfolio(mean_returns, cov_matrix)
+        optimal_weights = optimize_portfolio(mean_returns, cov_matrix, rf_rate)
         optimal_return, optimal_std, optimal_sharpe = portfolio_stats(
-            optimal_weights, mean_returns, cov_matrix)
+            optimal_weights, mean_returns, cov_matrix, rf_rate)
         
         # Generate random portfolios for frontier
         print("Generating efficient frontier...")
-        results = generate_random_portfolios(mean_returns, cov_matrix)
+        results = generate_random_portfolios(mean_returns, cov_matrix, rf_rate)
         
         # Display results
         print("\n" + "=" * 60)
