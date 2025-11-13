@@ -118,15 +118,29 @@ class DataManager:
         Reduce DataFrame memory footprint by downcasting numeric types.
         Call this after loading data.
         """
-        for ticker, df in self.current_data.items():
-            # Downcast float64 to float32 (sufficient precision for prices)
-            float_cols = df.select_dtypes(include=['float64']).columns
-            df[float_cols] = df[float_cols].astype('float32')
+        for ticker in list(self.current_data.keys()):  # Use list() to avoid dict change during iteration
+            df = self.current_data[ticker]
             
-            # Remove any duplicate indices
-            if df.index.duplicated().any():
-                df = df[~df.index.duplicated(keep='first')]
-                self.current_data[ticker] = df
+            try:
+                # Downcast float64 to float32 (sufficient precision for prices)
+                float_cols = df.select_dtypes(include=['float64']).columns.tolist()
+                
+                # Create a copy to avoid modifying during iteration
+                df_optimized = df.copy()
+                for col in float_cols:
+                    df_optimized[col] = df_optimized[col].astype('float32')
+                
+                # Remove any duplicate indices
+                if df_optimized.index.duplicated().any():
+                    df_optimized = df_optimized[~df_optimized.index.duplicated(keep='first')]
+                
+                # Replace the DataFrame
+                self.current_data[ticker] = df_optimized
+                
+            except Exception as e:
+                print(f"Warning: Could not optimize {ticker}: {e}")
+                # Continue with original DataFrame if optimization fails
+                continue
 
 
 def cleanup_dataframe(df):

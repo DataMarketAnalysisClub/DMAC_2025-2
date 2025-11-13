@@ -1,10 +1,8 @@
-import os
 import sys
 import pandas as pd
 import warnings
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon
 
 # Ignorar advertencias de statsmodels
 warnings.filterwarnings('ignore')
@@ -15,19 +13,13 @@ from data_logic import export_to_csv
 from analysis_logic import get_model_quality
 from plotting import generate_stock_chart
 from config import COLOR_SCHEMES, TICKER_COLOR_PAIRS, CONFIDENCE_COLORS
-from worker_threads import DataFetchWorker, PredictionWorker
+from worker_threads import DataFetchWorker, PredictionWorker, PortfolioWorker
 from memory_management import DataManager, get_image_base64
 
 class MultiStockApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('DMAC')
-
-        # Build the correct path
-        script_dir = os.path.dirname(__file__)
-        icon_path = os.path.join(script_dir,'images', 'ICON.png')
-        self.setWindowIcon(QIcon(icon_path))
-
+        self.setWindowTitle('Comparador de Tickers con Predicciones ARIMA')
         self.setGeometry(100, 100, 1200, 800)
         
         # Estado de la aplicación
@@ -38,6 +30,10 @@ class MultiStockApp(QWidget):
         # Workers
         self.data_worker = None
         self.prediction_worker = None
+        self.portfolio_worker = None
+        
+        # Portfolio data
+        self.portfolio_data = None
         
         # Configuración de colores
         self.color_schemes = COLOR_SCHEMES
@@ -63,6 +59,7 @@ class MultiStockApp(QWidget):
         self.btn.clicked.connect(self.ejecutar)
         self.btn_download.clicked.connect(self.descargar_csv)
         self.btn_predict.clicked.connect(self.generar_prediccion)
+        self.btn_optimize.clicked.connect(self.optimizar_cartera)
         
         self.color_input.currentTextChanged.connect(self.change_color_scheme)
         self.base100_checkbox.stateChanged.connect(self.toggle_base100)
@@ -73,6 +70,7 @@ class MultiStockApp(QWidget):
         """Enable/disable UI controls during processing"""
         self.btn.setEnabled(enabled)
         self.btn_predict.setEnabled(enabled)
+        self.btn_optimize.setEnabled(enabled)
         self.btn_download.setEnabled(enabled)
         self.ticker_input.setEnabled(enabled)
         self.period_input.setEnabled(enabled)
@@ -83,6 +81,7 @@ class MultiStockApp(QWidget):
         self.p_input.setEnabled(enabled)
         self.d_input.setEnabled(enabled)
         self.q_input.setEnabled(enabled)
+        self.rf_rate_input.setEnabled(enabled)
 
     # --- Funciones de Navegación y UI ---
 
@@ -132,7 +131,16 @@ class MultiStockApp(QWidget):
         periodo = self.period_input.currentText()
         frecuencia = self.freq_input.currentText()
         
-        tickers = [t.strip() for t in ticker_input.split(',') if t.strip()]
+        # Clean and parse tickers - remove quotes and extra whitespace
+        tickers = []
+        for t in ticker_input.split(','):
+            # Remove quotes, apostrophes, and whitespace
+            cleaned = t.strip().strip("'\"").strip()
+            if cleaned:
+                tickers.append(cleaned)
+        
+        print(f"DEBUG ejecutar: Raw input = {repr(ticker_input)}")
+        print(f"DEBUG ejecutar: Parsed tickers = {tickers}")
         
         if not tickers:
             self.set_message("Debe ingresar al menos un ticker.")
@@ -170,6 +178,10 @@ class MultiStockApp(QWidget):
         """Callback cuando termina la descarga de datos"""
         self._set_ui_enabled(True)
         
+        print(f"DEBUG _on_data_loaded: Received {len(current_data)} tickers")
+        print(f"DEBUG _on_data_loaded: current_data keys = {list(current_data.keys())}")
+        print(f"DEBUG _on_data_loaded: valid_tickers = {valid_tickers}")
+        
         if not current_data:
             self.set_message("No se obtuvieron datos para ningún ticker.")
             self.webview.setHtml("<h2>No se encontraron datos</h2>")
@@ -178,6 +190,8 @@ class MultiStockApp(QWidget):
         # Store data with proper memory management
         try:
             self.tickers = self.data_manager.set_data(current_data, valid_tickers)
+            print(f"DEBUG after set_data: self.tickers = {self.tickers}")
+            print(f"DEBUG after set_data: self.data_manager.current_data keys = {list(self.data_manager.current_data.keys())}")
             
             # Optimize DataFrames to reduce memory
             self.data_manager.optimize_dataframes()
@@ -243,6 +257,15 @@ class MultiStockApp(QWidget):
     def create_chart(self):
         self.set_message("Generando gráfico...", False)
         
+        print("=" * 60)
+        print("DEBUG create_chart CALLED")
+        print(f"DEBUG create_chart: self.tickers = {self.tickers}")
+        print(f"DEBUG create_chart: len(self.tickers) = {len(self.tickers)}")
+        print(f"DEBUG create_chart: data_manager.current_data keys = {list(self.data_manager.current_data.keys())}")
+        print(f"DEBUG create_chart: len(data_manager.current_data) = {len(self.data_manager.current_data)}")
+        print(f"DEBUG create_chart: data_manager.predictions keys = {list(self.data_manager.predictions.keys())}")
+        print("=" * 60)
+        
         html_str = generate_stock_chart(
             self.data_manager.current_data, self.tickers, self.data_manager.predictions,
             self.color_schemes, self.ticker_color_pairs, self.confidence_colors,
@@ -252,6 +275,7 @@ class MultiStockApp(QWidget):
             self.background_image  # Pass background image
         )
         
+        print("DEBUG: Chart HTML generated, length:", len(html_str))
         self.webview.setHtml(html_str)
         self.set_message("Gráfico actualizado.", False)
     
@@ -266,6 +290,66 @@ class MultiStockApp(QWidget):
             self.set_message(error, is_error=True)
         else:
             self.set_message(f"Datos guardados en '{filename}' (carpeta Descargas).", is_error=False)
+
+    def optimizar_cartera(self):
+        """Optimize portfolio using Markowitz"""
+        if not self.data_manager.current_data or not self.tickers:
+            self.set_message("Primero debe cargar datos de tickers.")
+            return
+        
+        if len(self.tickers) < 2:
+            self.set_message("Se necesitan al menos 2 tickers para optimización de cartera.")
+            return
+        
+        # Get risk-free rate
+        try:
+            rf_rate_pct = float(self.rf_rate_input.text().strip())
+            rf_rate = rf_rate_pct / 100.0  # Convert percentage to decimal
+        except ValueError:
+            self.set_message("Tasa libre de riesgo inválida. Use formato: 3.0 para 3%")
+            return
+        
+        # Disable UI
+        self._set_ui_enabled(False)
+        self.set_message(f"Optimizando cartera con {len(self.tickers)} activos...", False)
+        
+        # Create and execute worker
+        self.portfolio_worker = PortfolioWorker(
+            self.data_manager.current_data,
+            self.tickers,
+            rf_rate
+        )
+        self.portfolio_worker.progress.connect(lambda msg: self.set_message(msg, False))
+        self.portfolio_worker.finished.connect(self._on_portfolio_ready)
+        self.portfolio_worker.start()
+
+    def _on_portfolio_ready(self, portfolio_data, error):
+        """Callback when portfolio optimization finishes"""
+        self._set_ui_enabled(True)
+        
+        if error:
+            self.set_message(f"Error en optimización: {error}")
+            return
+        
+        self.portfolio_data = portfolio_data
+        
+        # Display efficient frontier
+        from plotting import generate_efficient_frontier_chart
+        html_str = generate_efficient_frontier_chart(
+            portfolio_data,
+            self.tickers,
+            self.background_image
+        )
+        
+        self.webview.setHtml(html_str)
+        
+        # Show summary message
+        opt_return = portfolio_data['optimal_return'] * 100
+        opt_std = portfolio_data['optimal_std'] * 100
+        opt_sharpe = portfolio_data['optimal_sharpe']
+        
+        msg = f"Cartera óptima: Retorno {opt_return:.2f}%, Riesgo {opt_std:.2f}%, Sharpe {opt_sharpe:.2f}"
+        self.set_message(msg, False)
 
     def closeEvent(self, event):
         """Cleanup workers and data on close"""

@@ -217,3 +217,33 @@ def setup_ui(main_window):
     
     main_window.main_screen.hide()
     main_window.main_layout.addWidget(main_window.main_screen)
+
+    # Portfolio Optimization Group 
+    main_window.portfolio_group = QGroupBox("Optimización de Cartera (Markowitz)")
+    main_window.portfolio_group.setStyleSheet('QGroupBox { font-weight: bold; padding: 10px; }')
+    portfolio_layout = QVBoxLayout()
+
+    portfolio_info = QLabel('📊 Calcula la cartera óptima que maximiza el Sharpe Ratio para los tickers cargados.')
+    portfolio_info.setStyleSheet('color: #666; font-size: 11px; font-style: italic;')
+    portfolio_layout.addWidget(portfolio_info)
+
+    rf_layout = QHBoxLayout()
+    rf_label = QLabel('Tasa libre de riesgo (%):')
+    rf_layout.addWidget(rf_label)
+    main_window.rf_rate_input = QLineEdit()
+    main_window.rf_rate_input.setPlaceholderText('Ej: 3.0 para 3%')
+    main_window.rf_rate_input.setText('3.0')
+    main_window.rf_rate_input.setMaximumWidth(100)
+    rf_layout.addWidget(main_window.rf_rate_input)
+    rf_layout.addStretch()
+    main_window.btn_optimize = QPushButton('Optimizar Cartera')
+    main_window.btn_optimize.setStyleSheet('background-color: #FF9800; color: white; padding: 8px 16px; font-weight: bold;')
+    rf_layout.addWidget(main_window.btn_optimize)
+    portfolio_layout.addLayout(rf_layout)
+
+    portfolio_warning = QLabel('⚠️ Requiere al menos 2 tickers cargados. Los resultados se basan en datos históricos.')
+    portfolio_warning.setStyleSheet('color: #FF9800; font-size: 11px; font-style: italic;')
+    portfolio_layout.addWidget(portfolio_warning)
+
+    main_window.portfolio_group.setLayout(portfolio_layout)
+    main_window.main_layout_main_screen.addWidget(main_window.portfolio_group)

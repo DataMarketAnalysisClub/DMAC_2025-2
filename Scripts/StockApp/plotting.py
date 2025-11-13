@@ -195,3 +195,154 @@ def generate_stock_chart(current_data, tickers, predictions,
     fig.update_layout(**layout_config)
     
     return fig.to_html(include_plotlyjs='cdn')
+
+def generate_efficient_frontier_chart(portfolio_data, tickers, background_image=None):
+    """
+    Generate Plotly chart for efficient frontier.
+    
+    Args:
+        portfolio_data: Dict from run_portfolio_optimization()
+        tickers: List of ticker symbols
+        background_image: Base64 encoded background image (optional)
+    
+    Returns:
+        HTML string with Plotly chart
+    """
+    results = portfolio_data['random_portfolios']
+    optimal_return = portfolio_data['optimal_return']
+    optimal_std = portfolio_data['optimal_std']
+    optimal_sharpe = portfolio_data['optimal_sharpe']
+    asset_stats = portfolio_data['asset_stats']
+    optimal_weights = portfolio_data['optimal_weights']
+    
+    fig = go.Figure()
+    
+    # Random portfolios (efficient frontier cloud)
+    fig.add_trace(go.Scatter(
+        x=results[0, :],
+        y=results[1, :],
+        mode='markers',
+        marker=dict(
+            size=4,
+            color=results[2, :],
+            colorscale='Viridis',
+            showscale=True,
+            colorbar=dict(title="Sharpe Ratio", x=1.15),
+            opacity=0.6
+        ),
+        name='Carteras Aleatorias',
+        hovertemplate='<b>Riesgo:</b> %{x:.2%}<br><b>Retorno:</b> %{y:.2%}<extra></extra>'
+    ))
+    
+    # Individual assets
+    asset_x = [stat['volatility'] for stat in asset_stats]
+    asset_y = [stat['return'] for stat in asset_stats]
+    asset_names = [stat['ticker'] for stat in asset_stats]
+    
+    fig.add_trace(go.Scatter(
+        x=asset_x,
+        y=asset_y,
+        mode='markers+text',
+        marker=dict(size=15, color='red', symbol='diamond', 
+                   line=dict(width=2, color='white')),
+        text=asset_names,
+        textposition='top center',
+        textfont=dict(size=12, color='red', family='Arial Black'),
+        name='Activos Individuales',
+        hovertemplate='<b>%{text}</b><br>Riesgo: %{x:.2%}<br>Retorno: %{y:.2%}<extra></extra>'
+    ))
+    
+    # Optimal portfolio
+    fig.add_trace(go.Scatter(
+        x=[optimal_std],
+        y=[optimal_return],
+        mode='markers+text',
+        marker=dict(size=25, color='#00FF00', symbol='star', 
+                   line=dict(width=3, color='white')),
+        text=['ÓPTIMA'],
+        textposition='top center',
+        textfont=dict(size=14, color='#00FF00', family='Arial Black'),
+        name='Cartera Óptima',
+        hovertemplate='<b>Cartera Óptima</b><br>Riesgo: %{x:.2%}<br>Retorno: %{y:.2%}<br>Sharpe: ' + f'{optimal_sharpe:.2f}' + '<extra></extra>'
+    ))
+    
+    # Build weights annotation
+    weights_text = "<b>Pesos Óptimos:</b><br>"
+    for ticker, weight in zip(tickers, optimal_weights):
+        weights_text += f"{ticker}: {weight*100:.1f}%<br>"
+    
+    annotations = [
+        dict(
+            x=0.02, y=0.98, xref='paper', yref='paper',
+            text=weights_text,
+            showarrow=False,
+            align='left',
+            bgcolor='rgba(0, 0, 0, 0.8)',
+            bordercolor='#00FF00',
+            borderwidth=2,
+            borderpad=10,
+            font=dict(size=11, color='white')
+        ),
+        dict(
+            x=0.02, y=0.78, xref='paper', yref='paper',
+            text=f"<b>Retorno Esperado:</b> {optimal_return*100:.2f}%<br>"
+                 f"<b>Volatilidad:</b> {optimal_std*100:.2f}%<br>"
+                 f"<b>Sharpe Ratio:</b> {optimal_sharpe:.2f}",
+            showarrow=False,
+            align='left',
+            bgcolor='rgba(0, 0, 0, 0.8)',
+            bordercolor='white',
+            borderwidth=2,
+            borderpad=10,
+            font=dict(size=11, color='white')
+        )
+    ]
+    
+    layout_config = dict(
+        title='Frontera Eficiente - Optimización de Cartera (Markowitz)',
+        xaxis_title='Volatilidad Anual (Riesgo)',
+        yaxis_title='Retorno Anual Esperado',
+        xaxis=dict(tickformat='.1%', gridcolor='rgba(128,128,128,0.2)'),
+        yaxis=dict(tickformat='.1%', gridcolor='rgba(128,128,128,0.2)'),
+        hovermode='closest',
+        plot_bgcolor='#0E1117',
+        paper_bgcolor='#0E1117',
+        font=dict(color='white'),
+        width=1200,
+        height=700,
+        showlegend=True,
+        legend=dict(x=0.01, y=0.01, bgcolor='rgba(0,0,0,0.5)'),
+        annotations=annotations
+    )
+    
+    # Add background image if provided
+    if background_image:
+        layout_config['images'] = [dict(
+            source=background_image,
+            xref="paper",
+            yref="paper",
+            x=0.5,
+            y=0.5,
+            sizex=0.6,
+            sizey=0.6,
+            xanchor="center",
+            yanchor="middle",
+            opacity=0.1,
+            layer="below"
+        )]
+    
+    fig.update_layout(**layout_config)
+    
+    # Enable download button
+    config = {
+        'displayModeBar': True,
+        'toImageButtonOptions': {
+            'format': 'png',
+            'filename': f'efficient_frontier_{"_".join(tickers)}',
+            'height': 1080,
+            'width': 1920,
+            'scale': 2
+        }
+    }
+    
+    return fig.to_html(include_plotlyjs='cdn', config=config)
