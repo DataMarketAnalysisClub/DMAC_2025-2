@@ -196,7 +196,7 @@ def generate_stock_chart(current_data, tickers, predictions,
     
     return fig.to_html(include_plotlyjs='cdn')
 
-def generate_efficient_frontier_chart(portfolio_data, tickers, background_image=None):
+def generate_efficient_frontier_chart(portfolio_data, tickers, background_image='DMAC.png'):
     """
     Generate Plotly chart for efficient frontier.
     
@@ -244,7 +244,7 @@ def generate_efficient_frontier_chart(portfolio_data, tickers, background_image=
         y=asset_y,
         mode='markers+text',
         marker=dict(size=15, color='red', symbol='diamond', 
-                   line=dict(width=2, color='white')),
+                   line=dict(width=2, color='black')),
         text=asset_names,
         textposition='top center',
         textfont=dict(size=12, color='red', family='Arial Black'),
@@ -258,7 +258,7 @@ def generate_efficient_frontier_chart(portfolio_data, tickers, background_image=
         y=[optimal_return],
         mode='markers+text',
         marker=dict(size=25, color='#00FF00', symbol='star', 
-                   line=dict(width=3, color='white')),
+                   line=dict(width=3, color='black')),
         text=['ÓPTIMA'],
         textposition='top center',
         textfont=dict(size=14, color='#00FF00', family='Arial Black'),
@@ -266,74 +266,92 @@ def generate_efficient_frontier_chart(portfolio_data, tickers, background_image=
         hovertemplate='<b>Cartera Óptima</b><br>Riesgo: %{x:.2%}<br>Retorno: %{y:.2%}<br>Sharpe: ' + f'{optimal_sharpe:.2f}' + '<extra></extra>'
     ))
     
-    # Build weights annotation
+# Build weights annotation (THIS IS THE NEW STYLED VERSION)
     weights_text = "<b>Pesos Óptimos:</b><br>"
     for ticker, weight in zip(tickers, optimal_weights):
         weights_text += f"{ticker}: {weight*100:.1f}%<br>"
     
+    # Updated annotations for a LIGHT background
     annotations = [
+
+            #Resumen de los pesos del portafolio ópitmo
         dict(
             x=0.02, y=0.98, xref='paper', yref='paper',
             text=weights_text,
             showarrow=False,
             align='left',
-            bgcolor='rgba(0, 0, 0, 0.8)',
-            bordercolor='#00FF00',
-            borderwidth=2,
+            bgcolor='rgba(255, 255, 255, 0.8)', # Light background
+            bordercolor='black',                 # Dark border
+            borderwidth=1,
             borderpad=10,
-            font=dict(size=11, color='white')
+            font=dict(size=11, color='black')  # Dark text
         ),
+
+        #Resumen del portafolio óptimo
         dict(
             x=0.02, y=0.78, xref='paper', yref='paper',
             text=f"<b>Retorno Esperado:</b> {optimal_return*100:.2f}%<br>"
                  f"<b>Volatilidad:</b> {optimal_std*100:.2f}%<br>"
                  f"<b>Sharpe Ratio:</b> {optimal_sharpe:.2f}",
             showarrow=False,
-            align='left',
-            bgcolor='rgba(0, 0, 0, 0.8)',
-            bordercolor='white',
-            borderwidth=2,
+            align='right',
+            bgcolor='rgba(255, 255, 255, 0.8)', # Light background
+            bordercolor='black',                 # Dark border
+            borderwidth=1,
             borderpad=10,
-            font=dict(size=11, color='white')
+            font=dict(size=11, color='black')  # Dark text
         )
     ]
     
+    # The LIGHT layout_config from our previous conversation
     layout_config = dict(
         title='Frontera Eficiente - Optimización de Cartera (Markowitz)',
         xaxis_title='Volatilidad Anual (Riesgo)',
         yaxis_title='Retorno Anual Esperado',
-        xaxis=dict(tickformat='.1%', gridcolor='rgba(128,128,128,0.2)'),
-        yaxis=dict(tickformat='.1%', gridcolor='rgba(128,128,128,0.2)'),
-        hovermode='closest',
-        plot_bgcolor='#0E1117',
-        paper_bgcolor='#0E1117',
-        font=dict(color='white'),
-        width=1200,
-        height=700,
+        plot_bgcolor='white',
+        paper_bgcolor='white',
+        font=dict(color='black'), 
+        height=550,
+        margin=dict(r=200),
         showlegend=True,
-        legend=dict(x=0.01, y=0.01, bgcolor='rgba(0,0,0,0.5)'),
-        annotations=annotations
+        legend=dict(x=0, y=1, orientation='h'),
+        xaxis=dict(
+            tickformat='.1%',
+            showline=True,
+            linecolor='black',
+            showgrid=True,
+            gridcolor='lightgray',
+            zerolinecolor='black'
+        ),
+        yaxis=dict(
+            tickformat='.1%',
+            showline=True,
+            linecolor='black',
+            showgrid=True,
+            gridcolor='lightgray',
+    
+            zerolinecolor='black'
+        ),
+        hovermode='closest',
+        xaxis_rangeslider_visible=False,
+        annotations=annotations  # Assign the new light annotations
     )
     
-    # Add background image if provided
+    # Add background image if provided (this logic is great)
     if background_image:
         layout_config['images'] = [dict(
             source=background_image,
-            xref="paper",
-            yref="paper",
-            x=0.5,
-            y=0.5,
-            sizex=0.6,
-            sizey=0.6,
-            xanchor="center",
-            yanchor="middle",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            sizex=0.6, sizey=0.6,
+            xanchor="center", yanchor="middle",
             opacity=0.1,
             layer="below"
         )]
     
     fig.update_layout(**layout_config)
     
-    # Enable download button
+    # Enable download button (this logic is great)
     config = {
         'displayModeBar': True,
         'toImageButtonOptions': {

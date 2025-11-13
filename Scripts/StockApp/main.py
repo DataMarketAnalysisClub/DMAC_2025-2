@@ -284,6 +284,13 @@ class MultiStockApp(QWidget):
             get_model_quality,
             self.background_image  # Pass background image
         )
+
+        try:
+            with open("debug_chart.html", "w", encoding="utf-8") as f:
+                f.write(html_str)
+            print("DEBUG: Saved debug_chart.html")
+        except Exception as e:
+            print(f"DEBUG: FAILED to save debug_chart.html: {e}")
         
         print("DEBUG: Chart HTML generated, length:", len(html_str))
         self.webview.setHtml(html_str)
