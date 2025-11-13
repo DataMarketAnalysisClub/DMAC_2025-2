@@ -3,6 +3,8 @@ import pandas as pd
 import warnings
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
+import os
 
 # Ignorar advertencias de statsmodels
 warnings.filterwarnings('ignore')
@@ -19,8 +21,16 @@ from memory_management import DataManager, get_image_base64
 class MultiStockApp(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Comparador de Tickers con Predicciones ARIMA')
+        self.setWindowTitle('DMAPP')
         self.setGeometry(100, 100, 1200, 800)
+
+        # Get the directory where this script is located
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # Create the full path to the icon
+        icon_path = os.path.join(script_dir, 'images', 'ICON.png')
+
+        # Set the icon
+        self.setWindowIcon(QIcon(icon_path))
         
         # Estado de la aplicación
         self.data_manager = DataManager(max_tickers=10)
