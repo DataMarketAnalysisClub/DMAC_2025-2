@@ -39,18 +39,30 @@ def calculate_returns(prices):
     returns = prices.pct_change(fill_method=None).dropna()
     return returns
 
+<<<<<<< HEAD
 def portfolio_stats(weights, mean_returns, cov_matrix, rf_rate):
+=======
+def portfolio_stats(weights, mean_returns, cov_matrix, rf_rate=0.03):
+>>>>>>> b0d89a57ddaa60d72cfdb818573775a7b07ea437
     """Calculate portfolio statistics"""
     portfolio_return = np.sum(mean_returns * weights) * 252
     portfolio_std = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))) * np.sqrt(252)
     sharpe_ratio = (portfolio_return - rf_rate) / portfolio_std
     return portfolio_return, portfolio_std, sharpe_ratio
 
+<<<<<<< HEAD
 def negative_sharpe(weights, mean_returns, cov_matrix, rf_rate):
     """Negative Sharpe ratio for minimization"""
     return -portfolio_stats(weights, mean_returns, cov_matrix, rf_rate)[2]
 
 def optimize_portfolio(mean_returns, cov_matrix, rf_rate):
+=======
+def negative_sharpe(weights, mean_returns, cov_matrix, rf_rate=0.03):
+    """Negative Sharpe ratio for minimization"""
+    return -portfolio_stats(weights, mean_returns, cov_matrix, rf_rate)[2]
+
+def optimize_portfolio(mean_returns, cov_matrix, rf_rate=0.03):
+>>>>>>> b0d89a57ddaa60d72cfdb818573775a7b07ea437
     """Find optimal portfolio (max Sharpe ratio)"""
     num_assets = len(mean_returns)
     constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
@@ -63,7 +75,11 @@ def optimize_portfolio(mean_returns, cov_matrix, rf_rate):
     
     return result.x
 
+<<<<<<< HEAD
 def generate_random_portfolios(mean_returns, cov_matrix, rf_rate, num_portfolios=5000):
+=======
+def generate_random_portfolios(mean_returns, cov_matrix, num_portfolios=5000, rf_rate=0.03):
+>>>>>>> b0d89a57ddaa60d72cfdb818573775a7b07ea437
     """Generate random portfolios for efficient frontier"""
     num_assets = len(mean_returns)
     results = np.zeros((3, num_portfolios))
@@ -160,6 +176,7 @@ def main():
     print("=" * 60)
     
     # Input tickers
+<<<<<<< HEAD
     print("\nEnter at least 2 stock tickers (press Enter for defaults: AAPL, GOOGL, MSFT, JPM, JNJ):")
     user_input = input("Tickers (comma-separated): ").strip()
     
@@ -174,12 +191,24 @@ def main():
         tickers = [t.strip().upper() for t in user_input.split(',')]
         if len(tickers) < 2:
             print("Warning: Need at least 2 tickers. Using defaults instead.")
+=======
+    print("\nEnter 5 stock tickers (press Enter for defaults: AAPL, GOOGL, MSFT, JPM, JNJ):")
+    user_input = input("Tickers (comma-separated): ").strip()
+    
+    if user_input:
+        tickers = [t.strip().upper() for t in user_input.split(',')]
+        if len(tickers) != 5:
+            print("Warning: Expected 5 tickers. Using defaults instead.")
+>>>>>>> b0d89a57ddaa60d72cfdb818573775a7b07ea437
             tickers = ['AAPL', 'GOOGL', 'MSFT', 'JPM', 'JNJ']
     else:
         tickers = ['AAPL', 'GOOGL', 'MSFT', 'JPM', 'JNJ']
     
     print(f"\nAnalyzing portfolio: {', '.join(tickers)}")
+<<<<<<< HEAD
     print(f"Risk-free rate: {rf_rate*100:.2f}%")
+=======
+>>>>>>> b0d89a57ddaa60d72cfdb818573775a7b07ea437
     
     # Download data
     try:
@@ -197,6 +226,7 @@ def main():
         
         # Optimize portfolio
         print("\nOptimizing portfolio...")
+<<<<<<< HEAD
         optimal_weights = optimize_portfolio(mean_returns, cov_matrix, rf_rate)
         optimal_return, optimal_std, optimal_sharpe = portfolio_stats(
             optimal_weights, mean_returns, cov_matrix, rf_rate)
@@ -204,6 +234,15 @@ def main():
         # Generate random portfolios for frontier
         print("Generating efficient frontier...")
         results = generate_random_portfolios(mean_returns, cov_matrix, rf_rate)
+=======
+        optimal_weights = optimize_portfolio(mean_returns, cov_matrix)
+        optimal_return, optimal_std, optimal_sharpe = portfolio_stats(
+            optimal_weights, mean_returns, cov_matrix)
+        
+        # Generate random portfolios for frontier
+        print("Generating efficient frontier...")
+        results = generate_random_portfolios(mean_returns, cov_matrix)
+>>>>>>> b0d89a57ddaa60d72cfdb818573775a7b07ea437
         
         # Display results
         print("\n" + "=" * 60)
