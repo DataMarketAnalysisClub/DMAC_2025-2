@@ -1,6 +1,8 @@
 import data_loader as dl
 import data_cleaning as dc
 import data_new_features as dnf
+import plot as pi
+
 #import matplotlib.pyplot as plt
 
 ipsa_list = [
@@ -49,3 +51,6 @@ ipsa_index.to_csv('ipsa_index.csv')
 
 print(ipsa_index.tail())
 print(weights.tail())
+
+pi.plot_ipsa('ipsa_index.csv')
+
