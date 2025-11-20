@@ -7,60 +7,87 @@ import logging
 from scipy.optimize import minimize
 import traceback
 
+# Import the new SARIMAX logic
+from api.sarimax import fit_sarimax
+
 api_bp = Blueprint('api', __name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- Helper Functions (Your Improved Logic) ---
+# --- Data Fetching Helpers ---
+
+def fetch_stock_data_list(ticker, period="2y", interval="1d"):
+    """
+    Fetches stock data and returns a list of dictionaries.
+    Useful for frontend charts and SARIMAX logic.
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period=period, interval=interval)
+        
+        if hist.empty:
+            return None
+        
+        hist = hist.reset_index()
+        data = []
+        for _, row in hist.iterrows():
+            date_val = row['Date']
+            if isinstance(date_val, pd.Timestamp):
+                date_str = date_val.strftime('%Y-%m-%d')
+            else:
+                date_str = str(date_val).split(' ')[0]
+
+            data.append({
+                'date': date_str,
+                'price': row['Close']
+            })
+        return data
+    except Exception as e:
+        logger.error(f"Error fetching list for {ticker}: {str(e)}")
+        return None
+
+def fetch_stock_data_df(ticker, period="2y", interval="1d"):
+    """
+    Fetches stock data and returns a pandas DataFrame.
+    Useful for Portfolio Optimization math.
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period=period, interval=interval)
+        
+        if hist.empty:
+            return None
+        
+        return hist[['Close']]
+    except Exception as e:
+        logger.error(f"Error fetching DF for {ticker}: {str(e)}")
+        return None
+
+# --- Optimization Logic ---
 
 def calculate_returns(prices_dict):
-    """
-    Calculate daily returns from price DataFrames.
-    
-    Args:
-        prices_dict: Dict of {ticker: DataFrame} with 'Close' column
-    
-    Returns:
-        DataFrame with returns for each ticker
-    """
     returns_data = {}
-    
     for ticker, df in prices_dict.items():
-        # Ensure 'Close' is numeric and handle potential missing values
         close_prices = pd.to_numeric(df['Close'], errors='coerce')
         returns = close_prices.pct_change().dropna()
         returns_data[ticker] = returns
     
     returns_df = pd.DataFrame(returns_data)
     returns_df = returns_df.dropna()
-    
     return returns_df
 
 def portfolio_stats(weights, mean_returns, cov_matrix, rf_rate):
-    """
-    Calculate portfolio statistics.
-    
-    Returns:
-        tuple: (annual_return, annual_volatility, sharpe_ratio)
-    """
-    portfolio_return = np.sum(mean_returns * weights) * 252  # Annualized
+    portfolio_return = np.sum(mean_returns * weights) * 252
     portfolio_std = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))) * np.sqrt(252)
-    sharpe_ratio = (portfolio_return - rf_rate) / portfolio_std if portfolio_std > 0 else 0
-    
+    if portfolio_std == 0:
+        return 0, 0, 0
+    sharpe_ratio = (portfolio_return - rf_rate) / portfolio_std
     return portfolio_return, portfolio_std, sharpe_ratio
 
 def negative_sharpe(weights, mean_returns, cov_matrix, rf_rate):
-    """Negative Sharpe ratio for minimization"""
     return -portfolio_stats(weights, mean_returns, cov_matrix, rf_rate)[2]
 
 def optimize_portfolio_weights(mean_returns, cov_matrix, rf_rate):
-    """
-    Find optimal portfolio weights (maximize Sharpe ratio).
-    Renamed from optimize_portfolio to avoid conflict with route logic.
-    
-    Returns:
-        np.array: Optimal weights
-    """
     num_assets = len(mean_returns)
     constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1})
     bounds = tuple((0, 1) for _ in range(num_assets))
@@ -74,210 +101,208 @@ def optimize_portfolio_weights(mean_returns, cov_matrix, rf_rate):
         bounds=bounds, 
         constraints=constraints
     )
-    
     if not result.success:
         raise ValueError(f"Optimization failed: {result.message}")
-    
     return result.x
 
-def generate_random_portfolios(mean_returns, cov_matrix, rf_rate, num_portfolios=5000):
-    """
-    Generate random portfolios for efficient frontier visualization.
-    
-    Returns:
-        np.array: Shape (3, num_portfolios) with [volatility, return, sharpe]
-    """
+def generate_random_portfolios(mean_returns, cov_matrix, rf_rate, num_portfolios=2000):
     num_assets = len(mean_returns)
     results = np.zeros((3, num_portfolios))
     
     for i in range(num_portfolios):
         weights = np.random.random(num_assets)
         weights /= np.sum(weights)
-        
-        portfolio_return, portfolio_std, sharpe = portfolio_stats(
-            weights, mean_returns, cov_matrix, rf_rate
-        )
-        
-        results[0, i] = portfolio_std
-        results[1, i] = portfolio_return
-        results[2, i] = sharpe
-    
+        p_ret, p_std, p_sharpe = portfolio_stats(weights, mean_returns, cov_matrix, rf_rate)
+        results[0, i] = p_std
+        results[1, i] = p_ret
+        results[2, i] = p_sharpe
     return results
 
 def run_portfolio_optimization(current_data, tickers, rf_rate):
-    """
-    Main function to run portfolio optimization.
-    
-    Args:
-        current_data: Dict of {ticker: DataFrame}
-        tickers: List of ticker symbols
-        rf_rate: Risk-free rate (e.g., 0.03 for 3%)
-    
-    Returns:
-        dict: Contains optimal_weights, stats, random_portfolios, etc.
-        str: Error message if failed
-    """
     try:
-        if len(tickers) < 2:
-            return None, "Se necesitan al menos 2 tickers para optimización de cartera"
-        
-        # Calculate returns
         returns_df = calculate_returns(current_data)
-        
         if returns_df.empty:
-            return None, "No hay suficientes datos para calcular retornos"
+            return None, "Insufficient data for returns calculation"
         
-        # Calculate statistics
         mean_returns = returns_df.mean().values
         cov_matrix = returns_df.cov().values
         
-        # Optimize portfolio
         optimal_weights = optimize_portfolio_weights(mean_returns, cov_matrix, rf_rate)
-        optimal_return, optimal_std, optimal_sharpe = portfolio_stats(
-            optimal_weights, mean_returns, cov_matrix, rf_rate
-        )
+        opt_ret, opt_std, opt_sharpe = portfolio_stats(optimal_weights, mean_returns, cov_matrix, rf_rate)
         
-        # Generate random portfolios for frontier
-        random_portfolios = generate_random_portfolios(
-            mean_returns, cov_matrix, rf_rate, num_portfolios=2000 # Reduced for faster API response
-        )
+        random_portfolios = generate_random_portfolios(mean_returns, cov_matrix, rf_rate)
         
-        # Calculate individual asset stats
         asset_stats = []
         for i, ticker in enumerate(tickers):
-            asset_return = mean_returns[i] * 252
+            asset_ret = mean_returns[i] * 252
             asset_std = np.sqrt(cov_matrix[i, i]) * np.sqrt(252)
             asset_stats.append({
                 'ticker': ticker,
-                'return': asset_return,
+                'return': asset_ret,
                 'volatility': asset_std
             })
-        
-        # Prepare result for JSON response (convert numpy types to native python types)
-        # Random portfolios need to be converted to list of dicts for the frontend chart
+            
         frontier_data = []
         for i in range(random_portfolios.shape[1]):
              frontier_data.append({
-                'x': random_portfolios[0, i] * 100,  # Risk %
-                'y': random_portfolios[1, i] * 100,  # Return %
-                'z': random_portfolios[2, i],        # Sharpe
+                'x': random_portfolios[0, i] * 100,
+                'y': random_portfolios[1, i] * 100,
+                'z': random_portfolios[2, i],
                 'id': i
             })
 
         result = {
             'optimal': {
-                'x': optimal_std * 100,
-                'y': optimal_return * 100,
-                'z': optimal_sharpe,
+                'x': opt_std * 100,
+                'y': opt_ret * 100,
+                'z': opt_sharpe,
                 'weights': optimal_weights.tolist()
             },
             'frontier': frontier_data,
             'asset_stats': asset_stats,
-            'tickers': tickers # Pass back to align weights
+            'tickers': tickers
         }
-        
         return result, None
-        
     except Exception as e:
         traceback.print_exc()
-        return None, f"Error en optimización: {str(e)}"
+        return None, str(e)
 
-def fetch_stock_data_df(ticker, period="2y", interval="1d"):
-    """
-    Fetches stock data and returns a pandas DataFrame compatible with your logic.
-    """
-    try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period=period, interval=interval)
-        
-        if hist.empty:
-            return None
-        
-        # Keep index as Date for calculation logic, but ensure it's datetime
-        return hist[['Close']]
-    except Exception as e:
-        logger.error(f"Error fetching {ticker}: {str(e)}")
-        return None
 
-# --- Routes ---
+# --- API Endpoints ---
 
 @api_bp.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({'status': 'online', 'timestamp': datetime.now().isoformat()})
+    return jsonify({'status': 'online'})
 
 @api_bp.route('/market-data', methods=['POST'])
 def get_market_data():
-    """
-    Expects JSON: { "tickers": ["AAPL", "MSFT"], "period": "1y" }
-    """
-    req_data = request.get_json()
-    tickers = req_data.get('tickers', [])
-    period = req_data.get('period', '1y')
-    
-    if not tickers:
-        return jsonify({'error': 'No tickers provided'}), 400
+    req = request.get_json()
+    tickers = req.get('tickers', [])
+    period = req.get('period', '2y')
+    interval = req.get('interval', '1d')
     
     results = {}
-    for ticker in tickers:
-        # Use the fetch function that returns a list of dicts for the frontend chart
-        # Re-implementing simple fetch for visualization here to avoid conflict
-        try:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period=period, interval="1d")
-            if not hist.empty:
-                hist = hist.reset_index()
-                data = []
-                for _, row in hist.iterrows():
-                    date_str = row['Date'].strftime('%Y-%m-%d')
-                    data.append({'date': date_str, 'price': row['Close']})
-                results[ticker] = data
-            else:
-                results[ticker] = {'error': 'Failed to fetch data'}
-        except Exception as e:
-            results[ticker] = {'error': str(e)}
+    for t in tickers:
+        data = fetch_stock_data_list(t, period, interval)
+        if data:
+            results[t] = data
+        else:
+            results[t] = {'error': 'Failed to fetch'}
             
     return jsonify(results)
 
 @api_bp.route('/optimize', methods=['POST'])
-def optimize_portfolio_route():
-    """
-    Expects JSON: { "tickers": ["AAPL", "MSFT"], "rf_rate": 0.03 }
-    Uses the improved logic functions.
-    """
-    req_data = request.get_json()
-    tickers = req_data.get('tickers', [])
-    rf_rate = req_data.get('rf_rate', 0.03)
+def optimize_route():
+    req = request.get_json()
+    tickers = req.get('tickers', [])
+    rf_rate = req.get('rf_rate', 0.03)
+    period = req.get('period', '2y')
     
-    # 1. Prepare Data Dictionary for Logic
     current_data = {}
     valid_tickers = []
     
     for t in tickers:
-        df = fetch_stock_data_df(t)
+        df = fetch_stock_data_df(t, period=period)
         if df is not None and not df.empty:
             current_data[t] = df
             valid_tickers.append(t)
             
     if len(valid_tickers) < 2:
-        return jsonify({'error': 'Need at least 2 valid tickers for optimization'}), 400
-    
-    # 2. Run Optimization Logic
+        return jsonify({'error': 'Need at least 2 valid tickers'}), 400
+        
     result, error = run_portfolio_optimization(current_data, valid_tickers, rf_rate)
-    
     if error:
         return jsonify({'error': error}), 500
         
     return jsonify(result)
 
 @api_bp.route('/forecast', methods=['POST'])
-def forecast_arima():
+def forecast_route():
     """
-    Expects JSON: { "ticker": "AAPL", "order": [1,1,1], "seasonal": [0,1,1,12] }
+    Runs SARIMAX forecast with optional Auto-ARIMA and Exogenous variables.
+    Expects: { 
+        "ticker": "AAPL", 
+        "exog_tickers": ["SPY", "USO"], 
+        "auto_fit": true,
+        "p": 1, "d": 1, "q": 1, ... 
+    }
     """
-    req_data = request.get_json()
-    ticker = req_data.get('ticker')
+    req = request.get_json()
+    ticker = req.get('ticker')
+    exog_tickers = req.get('exog_tickers', []) # List of strings
+    auto_fit = req.get('auto_fit', False)
     
+    # ARIMA Order
+    p = int(req.get('p', 1))
+    d = int(req.get('d', 1))
+    q = int(req.get('q', 1))
+    
+    # Seasonal Order
+    P = int(req.get('P', 0))
+    D = int(req.get('D', 1))
+    Q = int(req.get('Q', 1))
+    s = int(req.get('s', 12))
+    
+    period = req.get('period', '2y')
+    
+    # 1. Fetch Target Data
+    history_data = fetch_stock_data_list(ticker, period=period)
+    
+    if not history_data:
+        return jsonify({'error': f'Could not fetch data for {ticker}'}), 404
+        
+    # 2. Fetch Exogenous Data
+    exog_data_list = []
+    if exog_tickers:
+        # We need to fetch all exog data and align it by date
+        # First, get dict of {ticker: [{date, price}, ...]}
+        raw_exog = {}
+        for et in exog_tickers:
+            edata = fetch_stock_data_list(et, period=period)
+            if edata:
+                # Convert to simple dict {date: price} for easier merging
+                raw_exog[et] = {d['date']: d['price'] for d in edata}
+        
+        # Now merge into a single list of dicts aligned with history_data dates or union of dates
+        # fit_sarimax handles alignment via Pandas, so we just need a list of dicts
+        # containing {'date': '...', 'SPY': 100, 'USO': 50}
+        
+        # Get all unique dates from all exog sources
+        all_dates = set()
+        for et in raw_exog:
+            all_dates.update(raw_exog[et].keys())
+            
+        for date_str in sorted(all_dates):
+            row = {'date': date_str}
+            has_data = False
+            for et in exog_tickers:
+                if et in raw_exog and date_str in raw_exog[et]:
+                    row[et] = raw_exog[et][date_str]
+                    has_data = True
+                else:
+                    row[et] = None # Pandas will handle missing or we fill later
+            if has_data:
+                exog_data_list.append(row)
+
+    # 3. Fit SARIMAX
+    result = fit_sarimax(
+        history_data, 
+        exog_data=exog_data_list,
+        order=(p, d, q), 
+        seasonal_order=(P, D, Q, s),
+        forecast_steps=15,
+        auto_fit=auto_fit
+    )
+    
+    if not result:
+        return jsonify({'error': 'Model fitting failed. Check logs.'}), 500
+        
     return jsonify({
-        'message': f'SARIMAX calculation for {ticker} received',
-        'status': 'processing_simulated' 
+        'history': history_data,
+        'forecast': result['forecast'],
+        'lower_ci': result['lower_ci'],
+        'upper_ci': result['upper_ci'],
+        'dates': result['dates'],
+        'metrics': result['metrics'],
+        'params': result.get('params', {}) # Return best params if auto_fit used
     })
