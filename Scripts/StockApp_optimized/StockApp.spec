@@ -7,7 +7,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('images/*.png', 'images'),
+        ('images/*', 'images'),
     ],
     hiddenimports=[
         # scipy
@@ -63,5 +63,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='images/ICON.png',
+    icon='images/ICON.ico',
 )
