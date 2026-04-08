@@ -1,0 +1,78 @@
+name: Build StockApp
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: Scripts/StockApp_optimized
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: StockApp-Windows
+            exe_path: dist/StockApp.exe
+          - os: macos-latest
+            artifact_name: StockApp-macOS
+            exe_path: dist/StockApp
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: Scripts/StockApp_optimized/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      # macOS needs Qt WebEngine entitlements on some runners
+      - name: Install macOS system deps
+        if: runner.os == 'macOS'
+        run: brew install --quiet qt@6 || true
+
+      - name: Build with PyInstaller
+        run: pyinstaller StockApp.spec
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: Scripts/StockApp_optimized/${{ matrix.exe_path }}
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/StockApp-Windows/StockApp.exe
+            artifacts/StockApp-macOS/StockApp
+          generate_release_notes: true
