@@ -1,9 +1,12 @@
 """
 Portfolio optimization logic using Markowitz Modern Portfolio Theory
 """
+import logging
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
+
+logger = logging.getLogger(__name__)
 
 def calculate_returns(prices_dict):
     """
@@ -162,6 +165,5 @@ def run_portfolio_optimization(current_data, tickers, rf_rate):
         return result, None
         
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception("Portfolio optimization failed")
         return None, f"Error en optimización: {str(e)}"

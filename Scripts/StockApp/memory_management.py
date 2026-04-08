@@ -3,10 +3,13 @@ Memory management utilities for the stock app.
 Prevents memory leaks by properly cleaning up data and cached objects.
 """
 import gc
+import logging
 import pandas as pd
 import base64
 import os
 from weakref import WeakValueDictionary
+
+logger = logging.getLogger(__name__)
 
 def get_image_base64(image_filename):
     """
@@ -17,9 +20,9 @@ def get_image_base64(image_filename):
     image_path = os.path.join(script_dir, 'images', image_filename)
     
     if not os.path.exists(image_path):
-        print(f"Warning: Image not found at {image_path}")
+        logger.warning("Image not found at %s", image_path)
         return None
-    
+
     try:
         with open(image_path, 'rb') as f:
             encoded = base64.b64encode(f.read()).decode('utf-8')
@@ -31,10 +34,10 @@ def get_image_base64(image_filename):
                 '.jpeg': 'image/jpeg',
                 '.svg': 'image/svg+xml'
             }.get(ext, 'image/png')
-            
+
             return f"data:{mime_type};base64,{encoded}"
     except Exception as e:
-        print(f"Error encoding image: {e}")
+        logger.error("Error encoding image: %s", e)
         return None
 
 class DataManager:
@@ -138,7 +141,7 @@ class DataManager:
                 self.current_data[ticker] = df_optimized
                 
             except Exception as e:
-                print(f"Warning: Could not optimize {ticker}: {e}")
+                logger.warning("Could not optimize %s: %s", ticker, e)
                 # Continue with original DataFrame if optimization fails
                 continue
 

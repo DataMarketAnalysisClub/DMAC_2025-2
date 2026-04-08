@@ -1,8 +1,11 @@
+import logging
 import numpy as np
 import pandas as pd
 import warnings
 from statsmodels.tsa.arima.model import ARIMA
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+
+logger = logging.getLogger(__name__)
 
 # Intentar importar pmdarima
 try:
@@ -129,6 +132,5 @@ def run_arima_forecast(df, horizon, freq_str, is_auto, manual_order):
         return prediction_data, None
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception("ARIMA forecast failed")
         return None, str(e)
