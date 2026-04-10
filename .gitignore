@@ -1,3 +1,23 @@
 Pruebas/
 dmac/
 Forms/
+
+# Artefactos de desarrollo
+debug_chart.html
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Node / React
+node_modules/
+Scripts/beta-test/build/
+
+# Claude Code
+.claude/
