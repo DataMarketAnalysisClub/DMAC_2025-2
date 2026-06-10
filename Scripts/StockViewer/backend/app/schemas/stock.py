@@ -28,6 +28,10 @@ class StockQuote(BaseModel):
     timestamp: str
 
 
+class BatchQuotesResponse(BaseModel):
+    quotes: list[StockQuote]
+
+
 class StockMetrics(BaseModel):
     ticker: str
     name: Optional[str]

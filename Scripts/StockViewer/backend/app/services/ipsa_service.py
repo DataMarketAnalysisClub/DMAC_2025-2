@@ -50,12 +50,15 @@ def _read_csv_filtered(period: str) -> list[dict]:
     if not IPSA_CSV_PATH.exists():
         return []
 
-    df = pd.read_csv(IPSA_CSV_PATH, parse_dates=["Date"])
-    df = df.rename(columns={"Date": "date", "IPSA": "value"})
+    # The CSV is written with the date as an unnamed index column
+    df = pd.read_csv(IPSA_CSV_PATH)
+    df = df.rename(columns={df.columns[0]: "date", "IPSA": "value"})
     df = df.dropna(subset=["value"])
 
     period_days = {
+        "1d": 5, "5d": 10,
         "1m": 30, "3m": 90, "6m": 180,
+        "1mo": 30, "3mo": 90, "6mo": 180,
         "1y": 365, "2y": 730, "5y": 1825,
     }
     days = period_days.get(period, 365)

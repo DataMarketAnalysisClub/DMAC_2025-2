@@ -22,6 +22,10 @@ export function getQuote(ticker: string): Promise<StockQuote> {
   return apiFetch<StockQuote>(`/stocks/${ticker}/quote`);
 }
 
+export function getBatchQuotes(tickers: string[]): Promise<{ quotes: StockQuote[] }> {
+  return apiFetch(`/stocks/quotes?tickers=${encodeURIComponent(tickers.join(','))}`);
+}
+
 export function getMetrics(ticker: string): Promise<StockMetrics> {
   return apiFetch<StockMetrics>(`/stocks/${ticker}/metrics`);
 }

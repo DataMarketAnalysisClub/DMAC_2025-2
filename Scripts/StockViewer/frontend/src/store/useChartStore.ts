@@ -6,11 +6,13 @@ interface ChartState {
   comparisonTickers: string[];
   period: Period;
   chartType: 'candlestick' | 'line';
+  showIpsaBaseline: boolean;
   setMainTicker: (ticker: string) => void;
   addComparisonTicker: (ticker: string) => void;
   removeComparisonTicker: (ticker: string) => void;
   setPeriod: (period: Period) => void;
   setChartType: (type: 'candlestick' | 'line') => void;
+  toggleIpsaBaseline: () => void;
 }
 
 export const useChartStore = create<ChartState>((set) => ({
@@ -18,6 +20,7 @@ export const useChartStore = create<ChartState>((set) => ({
   comparisonTickers: [],
   period: '1Y',
   chartType: 'candlestick',
+  showIpsaBaseline: false,
   setMainTicker: (ticker) => set({ mainTicker: ticker }),
   addComparisonTicker: (ticker) =>
     set((s) => ({
@@ -29,4 +32,5 @@ export const useChartStore = create<ChartState>((set) => ({
     set((s) => ({ comparisonTickers: s.comparisonTickers.filter((t) => t !== ticker) })),
   setPeriod: (period) => set({ period }),
   setChartType: (chartType) => set({ chartType }),
+  toggleIpsaBaseline: () => set((s) => ({ showIpsaBaseline: !s.showIpsaBaseline })),
 }));

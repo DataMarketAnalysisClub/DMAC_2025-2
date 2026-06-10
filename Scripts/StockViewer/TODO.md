@@ -46,30 +46,37 @@
 ## Phase 2 — Core Features
 
 ### Watchlists & Favorites
-- [ ] `WatchlistPanel` — sidebar panel listing all custom watchlists
-- [ ] `AddToListModal` — modal to add a ticker to a chosen watchlist
-- [ ] `FavoritesPage` — dedicated view showing favorites as a metrics card grid
-- [ ] Market switcher toggle (US ↔ CL) in the sidebar header
+- [x] `WatchlistPanel` — sidebar panel listing all custom watchlists
+- [x] `AddToListModal` — modal to add a ticker to a chosen watchlist
+- [x] `FavoritesPage` — dedicated view showing favorites as a metrics card grid
+- [x] Market switcher toggle (US ↔ CL) in the sidebar header
 
 ### Portfolio
-- [ ] `PortfolioPage` — list all portfolios, create new
-- [ ] `PortfolioDetail` — holdings table (ticker, shares, avg cost, current value, P&L per position)
-- [ ] `PnLChart` — TradingView AreaSeries for portfolio value over time
-- [ ] `NewPortfolioModal` — name input to create a portfolio
-- [ ] Add holding form (ticker, shares, avg cost, currency)
-- [ ] Remove holding button
+- [x] `PortfolioPage` — list all portfolios, create new
+- [x] `PortfolioDetail` — holdings table (ticker, shares, avg cost, current value, P&L per position)
+- [x] `PnLChart` — TradingView AreaSeries for portfolio value over time
+- [x] `NewPortfolioModal` — name input to create a portfolio
+- [x] Add holding form (ticker, shares, avg cost, currency)
+- [x] Remove holding button
 
 ### IPSA & Market Polish
-- [ ] IPSA index line in `ComparisonChart` as a default baseline option
-- [ ] Live mini-price badges in `SectorTreeItem` rows (from polling)
-- [ ] Navigation tabs: Market / Favorites / Portfolio (currently only MarketPage is routed)
-- [ ] `react-router-dom` routes wired up (`/`, `/favorites`, `/portfolio`)
+- [x] IPSA index line in `ComparisonChart` as a default baseline option (IPSA toggle in chart toolbar)
+- [x] Live mini-price badges in `SectorTreeItem` rows (batch quotes, 30s polling, visible rows only)
+- [x] Navigation tabs: Market / Favorites / Portfolio (currently only MarketPage is routed)
+- [x] `react-router-dom` routes wired up (`/`, `/favorites`, `/portfolio`, `/portfolio/:id`)
 
 ### Search & UX Polish
-- [ ] Keyboard navigation in search dropdown (↑ ↓ Enter)
-- [ ] Recent searches / recently viewed tickers
-- [ ] Error boundary + fallback UI for when backend is unreachable
-- [ ] Loading skeleton for chart while data fetches
+- [x] Keyboard navigation in search dropdown (↑ ↓ Enter Esc)
+- [x] Recent searches / recently viewed tickers (localStorage, shown on focus when query empty)
+- [x] Error boundary + fallback UI for when backend is unreachable (banner polls `/health`)
+- [x] Loading skeleton for chart while data fetches
+
+### Phase 2 backend additions & Phase 1 bug fixes
+- [x] `GET /api/stocks/quotes?tickers=A,B,C` — concurrent batch quotes (max 40)
+- [x] Duplicate-ticker guard on `POST /watchlists/{id}/items`
+- [x] Fix: `POST /portfolios` and `POST /watchlists` 500'd (relationship not loaded before async serialization)
+- [x] Fix: `GET /portfolios/{id}/pnl` 500'd — `fillna(method=)` removed in pandas 2.x, now `.ffill()`
+- [x] Fix: `GET /market/ipsa` 500'd — CSV date column is an unnamed index, not `Date`; also accept `1mo/3mo/6mo/5d` periods
 
 ---
 

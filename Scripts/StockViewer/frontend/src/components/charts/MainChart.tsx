@@ -93,7 +93,21 @@ export function MainChart({ bars, loading }: MainChartProps) {
 
   return (
     <div className="relative w-full h-full">
-      {loading && (
+      {loading && bars.length === 0 && (
+        <div className="absolute inset-0 z-10 flex flex-col justify-end gap-0 bg-[#0d0d0d] px-6 pb-8 pt-6">
+          <div className="flex items-end gap-1.5 h-full animate-pulse">
+            {Array.from({ length: 24 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex-1 bg-[#1a1a1a] rounded-sm"
+                style={{ height: `${30 + ((i * 37) % 55)}%` }}
+              />
+            ))}
+          </div>
+          <span className="text-[#64748b] text-xs mt-3 text-center">Loading chart data...</span>
+        </div>
+      )}
+      {loading && bars.length > 0 && (
         <div className="absolute inset-0 flex items-center justify-center z-10 bg-[#0d0d0d]/60">
           <span className="text-[#64748b] text-xs">Loading...</span>
         </div>

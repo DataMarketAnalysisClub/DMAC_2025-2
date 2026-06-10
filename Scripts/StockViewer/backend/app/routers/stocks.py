@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.schemas.stock import (
     OHLCVResponse, StockQuote, StockMetrics,
-    SearchResponse, SearchResult, ForecastResponse,
+    SearchResponse, SearchResult, ForecastResponse, BatchQuotesResponse,
 )
 from app.services import stock_service, metrics_service, forecast_service
 from app.config import IPSA_TICKERS
@@ -49,6 +49,17 @@ async def search_stocks(q: str = Query("", min_length=0), market: str = "US"):
                 results.append(SearchResult(ticker=item["ticker"], name=item["name"], market="CL"))
 
     return SearchResponse(results=results[:20])
+
+
+@router.get("/quotes", response_model=BatchQuotesResponse)
+async def get_batch_quotes(tickers: str = Query(..., description="Comma-separated tickers, max 40")):
+    symbols = [t.strip().upper() for t in tickers.split(",") if t.strip()][:40]
+    if not symbols:
+        raise HTTPException(status_code=400, detail="No tickers provided")
+    try:
+        return BatchQuotesResponse(quotes=await stock_service.get_quotes(symbols))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{ticker}/ohlcv", response_model=OHLCVResponse)

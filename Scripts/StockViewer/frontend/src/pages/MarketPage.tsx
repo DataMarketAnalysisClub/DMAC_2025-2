@@ -1,27 +1,29 @@
 import { useEffect, useState } from 'react';
-import { getSectors } from '../api/market';
+import { getSectors, getIpsa } from '../api/market';
 import { useMarketStore } from '../store/useMarketStore';
 import { useChartStore } from '../store/useChartStore';
 import { useOHLCV } from '../hooks/useOHLCV';
 import { useTickerData } from '../hooks/useTickerData';
 import { SectorTree } from '../components/sidebar/SectorTree';
+import { WatchlistPanel } from '../components/sidebar/WatchlistPanel';
 import { MainChart } from '../components/charts/MainChart';
 import { ComparisonChart } from '../components/charts/ComparisonChart';
 import { ChartToolbar } from '../components/charts/ChartToolbar';
 import { StockHeader } from '../components/metrics/StockHeader';
 import { CompanyMetrics } from '../components/metrics/CompanyMetrics';
-import { getOHLCV } from '../api/stocks';
+import { getOHLCV, PERIOD_MAP } from '../api/stocks';
 import type { SectorNode } from '../api/market';
-import type { OHLCVBar } from '../types/stock';
+import type { OHLCVBar, Market } from '../types/stock';
 
 export function MarketPage() {
-  const { selectedTicker, selectedMarket, setSectorTree, sectorTree } = useMarketStore();
-  const { period, comparisonTickers } = useChartStore();
+  const { selectedTicker, setSectorTree, sectorTree, treeMarket, setTreeMarket } = useMarketStore();
+  const { period, comparisonTickers, showIpsaBaseline } = useChartStore();
   const { bars, loading } = useOHLCV(selectedTicker, period);
   const { quote, metrics } = useTickerData(selectedTicker);
   const [comparisonData, setComparisonData] = useState<{ ticker: string; bars: OHLCVBar[] }[]>([]);
+  const [ipsaBars, setIpsaBars] = useState<OHLCVBar[]>([]);
 
-  const currentTree: SectorNode[] = selectedMarket === 'CL'
+  const currentTree: SectorNode[] = treeMarket === 'CL'
     ? (sectorTree?.cl ?? [])
     : (sectorTree?.us ?? []);
 
@@ -41,9 +43,25 @@ export function MarketPage() {
     });
   }, [comparisonTickers, period]);
 
+  // Load IPSA baseline series when enabled (daily series, converted to pseudo-bars)
+  useEffect(() => {
+    if (!showIpsaBaseline) { setIpsaBars([]); return; }
+    const yfPeriod = PERIOD_MAP[period]?.period ?? '1y';
+    getIpsa(yfPeriod)
+      .then((res) => {
+        setIpsaBars(res.series.map((p) => {
+          const time = Math.floor(new Date(p.date).getTime() / 1000);
+          return { time, open: p.value, high: p.value, low: p.value, close: p.value, volume: 0 };
+        }));
+      })
+      .catch(() => setIpsaBars([]));
+  }, [showIpsaBaseline, period]);
+
+  const showComparison = comparisonTickers.length > 0 || showIpsaBaseline;
   const allComparisonDatasets = [
     { ticker: selectedTicker, bars },
     ...comparisonData,
+    ...(showIpsaBaseline && ipsaBars.length ? [{ ticker: 'IPSA', bars: ipsaBars }] : []),
   ];
 
   return (
@@ -52,12 +70,28 @@ export function MarketPage() {
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Sidebar */}
         <div className="w-[220px] flex flex-col border-r border-[#1e1e1e] shrink-0">
-          <div className="px-3 py-1.5 border-b border-[#1e1e1e]">
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1e1e1e]">
             <span className="text-[#64748b] text-[10px] uppercase tracking-wider">
-              {selectedMarket === 'CL' ? 'IPSA — Chile' : 'US Markets'}
+              {treeMarket === 'CL' ? 'IPSA — Chile' : 'US Markets'}
             </span>
+            <div className="flex gap-0.5">
+              {(['US', 'CL'] as Market[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setTreeMarket(m)}
+                  className={`px-1.5 py-0.5 text-[9px] font-semibold rounded transition-colors ${
+                    treeMarket === m
+                      ? 'bg-[#f59e0b] text-black'
+                      : 'text-[#64748b] hover:text-[#e2e8f0] hover:bg-[#1e1e1e]'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
           </div>
-          <SectorTree tree={currentTree} market={selectedMarket} />
+          <SectorTree tree={currentTree} market={treeMarket} />
+          <WatchlistPanel />
         </div>
 
         {/* Center: Chart */}
@@ -70,12 +104,20 @@ export function MarketPage() {
             <MainChart bars={bars} loading={loading} />
           </div>
 
-          {/* Comparison chart — 35% height, only when tickers present */}
-          {comparisonTickers.length > 0 && (
+          {/* Comparison chart — 35% height, only when tickers or IPSA baseline present */}
+          {showComparison && (
             <div className="h-[180px] border-t border-[#1e1e1e]">
               <div className="flex items-center gap-2 px-3 py-1 border-b border-[#1e1e1e]">
                 <span className="text-[#64748b] text-[10px] uppercase tracking-wider">Comparison (Base 100)</span>
                 <div className="ml-auto flex gap-1">
+                  {showIpsaBaseline && (
+                    <button
+                      onClick={() => useChartStore.getState().toggleIpsaBaseline()}
+                      className="text-[10px] bg-[#1e1e1e] text-[#22d3ee] px-1.5 py-0.5 rounded hover:bg-[#ef4444]/20 hover:text-[#ef4444]"
+                    >
+                      IPSA ×
+                    </button>
+                  )}
                   {comparisonTickers.map((t) => (
                     <button
                       key={t}

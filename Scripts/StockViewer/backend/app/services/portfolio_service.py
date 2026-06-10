@@ -21,7 +21,7 @@ def _sync_compute_pnl(tickers: list[str], shares_map: dict[str, float]) -> list[
 
     import pandas as pd
     closes = pd.DataFrame({t: data[t]["Close"] for t in valid})
-    closes = closes.sort_index().fillna(method="ffill")
+    closes = closes.sort_index().ffill()
 
     pnl = []
     for date, row in closes.iterrows():

@@ -29,7 +29,7 @@ async def create_portfolio(body: PortfolioCreate, db: AsyncSession = Depends(get
     p = Portfolio(name=body.name)
     db.add(p)
     await db.commit()
-    await db.refresh(p)
+    await db.refresh(p, ["holdings"])
     return p
 
 

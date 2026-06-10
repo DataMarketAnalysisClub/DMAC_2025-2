@@ -27,7 +27,7 @@ async def create_watchlist(body: WatchlistCreate, db: AsyncSession = Depends(get
     wl = Watchlist(name=body.name)
     db.add(wl)
     await db.commit()
-    await db.refresh(wl)
+    await db.refresh(wl, ["items"])
     return wl
 
 
@@ -59,6 +59,15 @@ async def add_item(watchlist_id: int, body: WatchlistItemCreate, db: AsyncSessio
     wl = result.scalar_one_or_none()
     if not wl:
         raise HTTPException(status_code=404, detail="Watchlist not found")
+    existing = await db.execute(
+        select(WatchlistItem).where(
+            WatchlistItem.watchlist_id == watchlist_id,
+            WatchlistItem.ticker == body.ticker.upper(),
+        )
+    )
+    dup = existing.scalar_one_or_none()
+    if dup:
+        return dup
     item = WatchlistItem(watchlist_id=watchlist_id, ticker=body.ticker.upper(), market=body.market)
     db.add(item)
     await db.commit()

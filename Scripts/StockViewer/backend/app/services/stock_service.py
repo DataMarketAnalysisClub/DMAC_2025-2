@@ -69,6 +69,23 @@ async def get_quote(ticker: str) -> StockQuote:
     )
 
 
+async def get_quotes(tickers: list[str]) -> list[StockQuote]:
+    """Fetch quotes for several tickers concurrently; silently drops failures."""
+    loop = asyncio.get_event_loop()
+    now = datetime.now(UTC).isoformat()
+
+    async def _fetch_one(ticker: str) -> StockQuote | None:
+        try:
+            q = await loop.run_in_executor(None, partial(_sync_fetch_quote, ticker))
+            return StockQuote(ticker=ticker, market=_detect_market(ticker), timestamp=now, **q)
+        except Exception as e:
+            logger.warning("Quote failed for %s: %s", ticker, e)
+            return None
+
+    results = await asyncio.gather(*[_fetch_one(t) for t in tickers])
+    return [r for r in results if r is not None]
+
+
 INDICES = [
     {"ticker": "^GSPC",  "name": "S&P 500"},
     {"ticker": "^IXIC",  "name": "NASDAQ"},
