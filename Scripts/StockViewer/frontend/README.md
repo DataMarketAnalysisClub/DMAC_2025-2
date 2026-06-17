@@ -1,73 +1,67 @@
-# React + TypeScript + Vite
+# StockViewer — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The React UI for StockViewer: a Bloomberg-style terminal for browsing US and IPSA
+stocks, charting, watchlists, and portfolios. Talks to the FastAPI backend through
+a Vite dev-server proxy, so the browser only ever hits `localhost:5173`.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **React 19** + **TypeScript**, bundled with **Vite**
+- **Tailwind CSS v4** (dark terminal theme: `#0d0d0d` background, amber, green/red)
+- **Zustand** for state, **React Router** for navigation
+- **TradingView Lightweight Charts v5** for candlestick, comparison, and P&L charts
 
-## React Compiler
+## Setup & run
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd frontend
+npm install
+npm run dev      # dev server at http://localhost:5173
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Start the [backend](../backend/README.md) on port 8000 first — the dev server
+proxies `/api` and `/health` to it (see `vite.config.ts`).
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Other scripts:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build    # type-check + production build into dist/
+npm run preview  # serve the production build locally
+npm run lint     # ESLint
 ```
+
+## Structure (`src/`)
+
+```
+src/
+├── main.tsx, App.tsx        Entry + router (TopBar, IndexBar, routes)
+├── api/                     Typed fetch client + per-domain modules
+│                            (client, stocks, market, watchlists, portfolios)
+├── pages/                   MarketPage, FavoritesPage, PortfolioPage, PortfolioDetailPage
+├── components/
+│   ├── layout/              TopBar (search), IndexBar, BackendBanner, ErrorBoundary
+│   ├── charts/              MainChart, ComparisonChart, PnLChart, ChartToolbar
+│   ├── metrics/             StockHeader, CompanyMetrics, MetricCard
+│   ├── sidebar/             SectorTree, WatchlistPanel
+│   ├── modals/              AddToListModal
+│   └── ui/                  Modal
+├── hooks/                   useOHLCV, useTickerData, useQuotes, usePolling
+├── store/                   Zustand: useMarketStore, useChartStore,
+│                            useWatchlistStore, usePortfolioStore
+└── types/                   stock, portfolio, watchlist type definitions
+```
+
+## Routes
+
+| Path | Page |
+| ---- | ---- |
+| `/` | Market view (sector sidebar · chart · metrics) |
+| `/favorites` | Favorites as a metrics-card grid |
+| `/portfolio` | List/create portfolios |
+| `/portfolio/:id` | Holdings table + P&L chart |
+
+## How it talks to the backend
+
+`src/api/client.ts` wraps `fetch` with typed responses and an `ApiError`. All paths
+are relative (`/api/...`), proxied by Vite in dev. The `BackendBanner` component
+polls `/health` and shows a banner if the API is unreachable.
